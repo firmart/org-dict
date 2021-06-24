@@ -30,10 +30,13 @@
 
 ;;; Code:
 
-;; built-in Emacs lib
+;; Built-in Emacs lib
 (require 'org)
 (require 'ox-html)
-(require 'cl-lib)     ;; Common-lisp emulation library
+(require 'cl-lib) 
+;; Dictionary parse engines
+(require 'org-dict-core)
+(require 'org-dict-cntrl)
 
 ;;; Custom group
 ;;;; General settings
@@ -44,12 +47,29 @@
   :package-version '(org-dict . "0.1"))
 
 (defcustom org-dict-dictionaries nil
-  ""
-  :type  'boolean
+  "List of dictionaries used in output by default."
+  :type '(repeat string)
   :group 'org-glaux
   :package-version '(org-glaux . "0.1"))
 
-;;; Interactive functions
+;;; Internal variables
+(defvar org-dict--buffer "*org-dict*")
 ;;; Internal functions
+(defun org-dict--parse (url parser)
+  "Parse a dictionary and return the result"
+  (let ((dom (org-dict-core-dom url)))
+    (when (get-buffer org-dict--buffer)
+      (kill-buffer org-dict--buffer))
+    (with-current-buffer (get-buffer-create org-dict--buffer)
+      (org-mode)
+      (mapc #'insert
+	    (funcall parser dom url))
+      (read-only-mode)
+      (switch-to-buffer org-dict--buffer))))
+
+;;; Interactive functions
+(defun org-dict ()
+  "Org-dict entry-point"
+  ())
 ;;; org-dict.el ends here
 (provide 'org-dict)
