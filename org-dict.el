@@ -171,6 +171,7 @@ all results gathered from dictionaries of that language.
       ;; Turn off some time-consuming minor mode
       ;; (Seriously, spell check a dictionary ???)
       (when (fboundp 'flyspell-mode) (flyspell-mode -1))
+
       ;; Allow markup to span over 10 lines
       (setcar (nthcdr 4 org-emphasis-regexp-components) 9)
       (org-set-emph-re 'org-emphasis-regexp-components org-emphasis-regexp-components)
@@ -193,8 +194,8 @@ prompt to choose a language and display in the buffer `org-dict-buffer'
 all results gathered from dictionaries of that language.
 "
   (interactive)
-  (let ((word (substring-no-properties
-               (thing-at-point 'word))))
+  (when-let* ((word-at-point (thing-at-point 'word))
+	      (word (substring-no-properties word-at-point)))
     (org-dict word)))
 
 ;;; org-dict.el ends here
