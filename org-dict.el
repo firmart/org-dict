@@ -57,7 +57,7 @@
 ;;; Internal functions
 (defun org-dict--parse (url parser)
   "Parse a dictionary and return the result"
-  (let ((dom (org-dict-core-dom url)))
+  (let ((dom (org-dict--url-to-dom url)))
     (when (get-buffer org-dict--buffer)
       (kill-buffer org-dict--buffer))
     (with-current-buffer (get-buffer-create org-dict--buffer)

@@ -49,11 +49,12 @@ One word could have multiple entries (as noun, as adjective, etc.)"
   (let ((dom-list (list dom)))
     (append dom-list
 	    (cl-loop for i from 1 to (1- (org-dict-cntrl--total-entries dom))
+		     ;; fetch <tlfi-url>/<word>/<nth-entry>
 		     for entry-url = (concat url "/" (number-to-string i))
-		     collect (org-dict-core-dom entry-url) into remaining-dom
+		     collect (org-dict--url-to-dom entry-url) into remaining-dom
 		     finally return remaining-dom))))
 
-(defun org-dict-cntry--parse-entry-content (dom)
+(defun org-dict-cntrl--parse-entry-content (dom)
   (dom-texts (dom-by-id dom "lexicontent")))
 
 (defun org-dict-cntrl--parse-entry (dom)
@@ -63,7 +64,7 @@ One word could have multiple entries (as noun, as adjective, etc.)"
     (org-mode)
     (org-insert-heading)
     (insert entry-name "\n")
-    (insert (org-dict-cntry--parse-entry-content dom))
+    (insert (org-dict-cntrl--parse-entry-content dom))
     (buffer-substring (point-min) (point-max)))))
 
 ;;; Interactive functions
