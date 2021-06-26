@@ -73,38 +73,43 @@ is CLASSNAME'.
 			   (node-classes (when node-class (split-string node-class))))
 		      (member classname node-classes)))))
 
-(defun org-dict--dom-select-base (dom selector)
-  (let* ((tag (plist-get selector :tag))
-	 (attrs (plist-get selector :attrs))
-	 (id (car (alist-get 'id attrs)))
-	 (class (car (alist-get 'class attrs))))
-    (cond (id (let* (;; #id selector
-		     (id-node (when id (car (dom-by-id dom (concat "^" id "$")))))
-		     (node-class (when (and class id-node) (dom-attr id-node 'class)))
-		     (node-classes (when (and class node-class) (split-string node-class)))
-		     ;; .class#id selector
-		     (class-id-node (when (and id-node
-					       (or (not class)
-						   (member class node-classes)))
-				      id-node))
-		     ;; e.class#id selector
-		     (tag-class-id-node (when (and class-id-node
-						   (or (not tag) 
-						       (eq tag (car class-id-node))))
-					  class-id-node)))
-		(when tag-class-id-node (list tag-class-id-node))))
-	  (class (let* (;; .class selector
-			(class-nodes (when class (org-dict--dom-by-class dom class)))
-			;; e.class selector
-			(tag-class-nodes (when class-nodes
-					   (if tag (cl-remove-if-not
-						    (lambda (node) (eq tag (car node)))
-						    class-nodes)
-					     class-nodes))))
-		   tag-class-nodes))
-	  (tag (dom-by-tag dom tag)))))
+(defun org-dict--dom-select-base (dom-or-nodes selector)
+  ;; If there is only a single node, wrap it in a list.
+  ;; Use a heuristics to distinguish both cases.
+  (let ((nodes (if (symbolp (car dom-or-nodes)) (list dom-or-nodes) dom-or-nodes)))
+    (cl-remove-duplicates
+     (cl-loop for dom in nodes
+	      for tag = (plist-get selector :tag)
+	      for attrs = (plist-get selector :attrs)
+	      for id = (car (alist-get 'id attrs))
+	      for class = (car (alist-get 'class attrs))
+	      append (cond (id (let* (;; #id selector
+				      (id-node (when id (car (dom-by-id dom (concat "^" id "$")))))
+				      (node-class (when (and class id-node) (dom-attr id-node 'class)))
+				      (node-classes (when (and class node-class) (split-string node-class)))
+				      ;; .class#id selector
+				      (class-id-node (when (and id-node
+								(or (not class)
+								    (member class node-classes)))
+						       id-node))
+				      ;; e.class#id selector
+				      (tag-class-id-node (when (and class-id-node
+								    (or (not tag) 
+									(eq tag (car class-id-node))))
+							   class-id-node)))
+				 (when tag-class-id-node (list tag-class-id-node))))
+			   (class (let* (;; .class selector
+					 (class-nodes (when class (org-dict--dom-by-class dom class)))
+					 ;; e.class selector
+					 (tag-class-nodes (when class-nodes
+							    (if tag (cl-remove-if-not
+								     (lambda (node) (eq tag (car node)))
+								     class-nodes)
+							      class-nodes))))
+				    tag-class-nodes))
+			   (tag (dom-by-tag dom tag)))))))
 
-(defun org-dict--dom-select (dom selector)
+(defun org-dict--dom-select (dom-or-nodes selector)
   "Select DOM node given CSS attribute/combinator SELECTOR.
 
 A <selector> has the following syntax: 
