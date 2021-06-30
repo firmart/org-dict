@@ -62,9 +62,11 @@
       (kill-buffer org-dict--buffer))
     (with-current-buffer (get-buffer-create org-dict--buffer)
       (org-mode)
-      (mapc #'insert
-	    (funcall parser dom url))
+      (mapc #'insert (funcall parser dom url))
       (read-only-mode)
+      (goto-char (point-min))
+      (setq org-cycle-global-status 'overview)
+      (org-global-cycle)
       (switch-to-buffer org-dict--buffer))))
 
 ;;; Interactive functions

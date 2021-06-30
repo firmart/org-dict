@@ -58,102 +58,207 @@ Before using this function, make sure that:
   "As `org-dict--dom-replace-node', but accepts two lists of nodes."
   (cl-loop for node in nodes
 	   for new-node in new-nodes
-	   (org-dict--dom-replace-node dom node new-node)))
+	   do (org-dict--dom-replace-node dom node new-node)))
 
-(defun org-dict--dom-by-class (dom classname) ;
-  "Return nodes from DOM that matches CLASSNAME.
+(defun org-dict--dom-node-class (node)
+  "Return NODE class as a list."
+  (let ((node-class (dom-attr node 'class)))
+    (when node-class (split-string node-class))))
 
-Unlike `dom-by-class' which matches nodes using CLASSNAME as a regexp, 
-this function matches nodes whose one of its class is exactly CLASSNAME.
-So, no need to call `dom-by-class' using complex regexp to say 'one of its class
-is CLASSNAME'.
+(defun org-dict--dom-node-class-p (classes node)
+  "Return `t' whenever NODE has CLASSES as classes.
+ 
+ CLASSES can be given as a list of string for multiple classes or
+ as a string for a single class."
+  (let ((node-classes (org-dict--dom-node-class node)))
+    (if (listp classes)
+ 	(cl-subsetp classes node-classes :test #'string=)
+      (member classes node-classes))))
+
+;; TODO
+(defun org-dict--dom-node-simple-selector-p (simple-selector node)
+  "Return `t' whenever NODE matches a SIMPLE-SELECTOR query."
+  (or (not simple-selector)
+      (and (let ((tag (plist-get simple-selector :tag)))
+	     (or (not tag) (eq tag (car node))))
+	   (cl-loop for (key . value) in (plist-get simple-selector :attrs)
+		    with match-result
+		    if (not key)
+		      do (error "attribute selector must have a key")
+		    else if (not value)
+		      do (setq match-result (member key (mapcar #'car (dom-attributes node)))) 
+		    else if (eq key 'class)
+		    do (setq match-result (org-dict--dom-node-class-p (split-string value) node))
+		    else
+		      do (setq match-result (member (cons key value) (dom-attributes node)))
+
+		    if (not match-result) return nil
+		    finally return t))))
+
+;; (defun org-dict--dom-node-tag-id-class-p (tag id class node)
+;;   "Return `t' whenever NODE matches TAG and optional attributes ID or CLASS."
+;;   (and (or (not tag) (eq tag (car node)))
+;;        (or (not id) (string= id (dom-attr node 'id)))
+;;        (or (not class) (org-dict--dom-node-class-p class node))))
+
+;; (defun org-dict--dom-by-class (dom classes) 
+;;   "Return nodes from DOM that belongs to CLASSES.
+;; 
+;; CLASSES can be given as a list of string for multiple classes or
+;; as a string for a single class.
+;; 
+;; Unlike `dom-by-class' which matches nodes using CLASSES as a regexp, 
+;; this function matches nodes whose classes contain exactly CLASSES."
+;;   (dom-search dom (lambda (node) (org-dict--dom-node-class-p classes node))))
+
+(defun org-dict--dom-by-attrs (dom attrs) 
+  "Return nodes from DOM that match attributes ATTRS.
+
+Unlike `dom-by-class' which matches nodes using regexp, 
+this function matches nodes whose classes contain those given in ATTRS.
+E.g. '((class . \"bottombox\")) will match nodes having attribute '((class . \"box bottombox\"))"
+  (let* ((attrs-keys (remove nil (mapcar #'car attrs))))
+    (if (not attrs-keys)
+	dom
+      (dom-search dom
+		  (lambda (node)
+		    (org-dict--dom-node-simple-selector-p `(:attrs ,attrs) node))))))
+
+;; (when node-attrs
+;; 			(cl-loop for (key . value) in node-attrs
+;; 				 with node-class-list
+;; 				 ;; `value' is nil (boolean attribute). Check whether 
+;; 				 ;; - `key' is included in the query attributes.
+;; 				 ;; - the query specified a value for `key'.
+;; 				 if (not value) do 'nothing and
+;; 				    if (or (not (member key attrs-keys))
+;; 					    (alist-get key attrs))
+;; 			              return nil end
+;; 				 ;; `value' is non-nil.
+;; 				 ;; Handle specially the case `key' = class as we need to consider `value' as a set.
+;; 				 else if (eq key 'class) do (setq node-class-list (org-dict--dom-node-class node))
+;; 				   and if (not (cl-subsetp attrs-class-list node-class-list :test 'string=))
+;; 				     return nil end
+;; 				 ;; Now, we handle arbitrary non-nil key-value.
+;; 				 else if (not (and (member key attrs-keys)
+;; 						   (string= value (alist-get key attrs))))
+;; 				   return nil end
+;; 				 (message "node key:%s value:%s" key value
+;; 				 finally return t)))
+(defun org-dict--dom-simple-select (dom-or-nodes selector)
+  "Given a simple SELECTOR, return its query result on DOM-OR-NODES.
+
+Specifically, 
+- if DOM-OR-NODES is a DOM (i.e. not a nodes list), the result is the query of a simple SELECTOR.
+- if DOM-OR-NODES is a nodes list (say result from a selector s1), then the result 
+  corresponds to 's1 SELECTOR' (namely the result of the descendant combinator of s1 and SELECTOR).
 "
-  (dom-search dom (lambda (node)
-		    (let* ((node-class (dom-attr node 'class))
-			   (node-classes (when node-class (split-string node-class))))
-		      (member classname node-classes)))))
+  
+   ;; If there is only a single node, wrap it in a list.
 
-(defun org-dict--dom-select-base (dom-or-nodes selector)
-  ;; If there is only a single node, wrap it in a list.
-  ;; Use a heuristics to distinguish both cases.
-  (let ((nodes (if (symbolp (car dom-or-nodes)) (list dom-or-nodes) dom-or-nodes)))
-    (cl-remove-duplicates
-     (cl-loop for dom in nodes
-	      for tag = (plist-get selector :tag)
-	      for attrs = (plist-get selector :attrs)
-	      for id = (car (alist-get 'id attrs))
-	      for class = (car (alist-get 'class attrs))
-	      append (cond (id (let* (;; #id selector
-				      (id-node (when id (car (dom-by-id dom (concat "^" id "$")))))
-				      (node-class (when (and class id-node) (dom-attr id-node 'class)))
-				      (node-classes (when (and class node-class) (split-string node-class)))
-				      ;; .class#id selector
-				      (class-id-node (when (and id-node
-								(or (not class)
-								    (member class node-classes)))
-						       id-node))
-				      ;; e.class#id selector
-				      (tag-class-id-node (when (and class-id-node
-								    (or (not tag) 
-									(eq tag (car class-id-node))))
-							   class-id-node)))
-				 (when tag-class-id-node (list tag-class-id-node))))
-			   (class (let* (;; .class selector
-					 (class-nodes (when class (org-dict--dom-by-class dom class)))
-					 ;; e.class selector
-					 (tag-class-nodes (when class-nodes
-							    (if tag (cl-remove-if-not
-								     (lambda (node) (eq tag (car node)))
-								     class-nodes)
-							      class-nodes))))
-				    tag-class-nodes))
-			   (tag (dom-by-tag dom tag)))))))
+(cl-remove-duplicates
+   (cl-loop with nodes = (if (org-dict--dom-p dom-or-nodes) (list dom-or-nodes) dom-or-nodes)
+	    with tag = (plist-get selector :tag)
+	    with attrs = (plist-get selector :attrs)
+	    with id = (alist-get 'id attrs)
+	    for dom in nodes
+	    append (cond (id (let ((id-nodes (dom-by-id dom (concat "^" id "$"))))
+			       (when (org-dict--dom-node-simple-selector-p selector (car id-nodes)) id-nodes)))
+			 (attrs (let ((attrs-nodes (org-dict--dom-by-attrs dom attrs)))
+				    (if tag (cl-remove-if-not
+					     (lambda (node) (eq tag (car node)))
+					     attrs-nodes)
+				      attrs-nodes)))
+			 (tag (dom-by-tag dom tag))))))
 
-(defun org-dict--dom-select (dom-or-nodes selector)
+(defun org-dict--dom-p (dom)
+  "Return `t' whenever DOM is a dom (and not a list of nodes)."
+  (symbolp (car dom)))
+
+(defun org-dict--select-child (dom nodes selector)
+  "Given NODES (the query result of s1) on the DOM, return 's1 > SELECTOR'."
+  (let* ((tag (plist-get selector :tag))
+	 (attrs (plist-get selector :attrs))
+	 (id (alist-get 'id attrs))
+	 (class (alist-get 'class attrs))
+	 (child-nodes (cl-mapcan #'dom-non-text-children nodes)))
+    (cl-remove-if-not (lambda (node)
+			(org-dict--dom-node-simple-selector-p selector node))
+		      child-nodes)))
+
+(defun org-dict--dom-nodes-subsequent-sibling (dom nodes &optional adjacent?)
+  "Given NODES from DOM, return a list of subsequent siblings of them.
+
+If ADJACENT? is non-nil, then hold only one subsequent sibling.
+"
+  (cl-remove-duplicates
+   (cl-loop for node in nodes
+	    for siblings = (dom-non-text-children (dom-parent dom node))
+	    append (cl-loop for sibling in siblings
+			    with node-seen?
+			    if node-seen? collect sibling
+			    until (and node-seen? adjacent?)
+			    if (eq sibling node) do (setq node-seen? t)))))
+
+(defun org-dict--select-subsequent-sibling (dom nodes selector &optional adjacent?)
+  "Given NODES (the query result of s1) on the DOM, return 's1 ~ SELECTOR'.
+
+If ADJACENT? is non-nil, return the result of 's1 + SELECTOR'."
+  (let* ((sibling-nodes (org-dict--dom-nodes-subsequent-sibling dom nodes adjacent?)))
+    (cl-remove-if-not (lambda (node)
+			(org-dict--dom-node-simple-selector-p selector node))
+		      sibling-nodes)))
+
+(defun org-dict--dom-select (dom selector)
   "Select DOM node given CSS attribute/combinator SELECTOR.
 
-A <selector> has the following syntax: 
-'(:tag <tag> :attrs <attributes>) | 
-'(<combinator> (:tag <tag> :attrs <attributes>) <selector>).
+A SELECTOR has the following syntax: 
+<selector> := '(<simple_selector> <combinator_selector>...)
+<simple_selector> := '(:tag <tag> :attrs <attributes>) 
+<combinator_selector> := '(<combinator> <simple_selector>)
+where
+<tag> is a symbol
+<combinator> is one of '=>, '>, '+, '~
+<attributes> is an alist of key (symbol) value (string)
 
 Simple selectors:
 - 'e' corresponds to '(:tag e)
-- '#myid' corresponds to '(:attrs ((id \"myid\")))
-- '.myclass' corresponds to '(:attrs ((class \"myclass\")))
-- 'e.#myid' corresponds to '(:tag e :attrs ((id \"myid\")))
+- '#myid' corresponds to '(:attrs ((id . \"myid\")))
+- '.myclass' corresponds to '(:attrs ((class . \"myclass\")))
 
-Attribute selectors (only e[key~=value] is supported):
+Attribute selectors (only e[key] and e[key~=value] is supported):
+- '[key]', corresponds to (:attrs ((key)))
+- 'e[key]', corresponds to (:tag e :attrs ((key)))
+- 'e[key~=\"value\"]', corresponds to (:tag e :attrs ((key . \"value\")))
 - 'e#myid', which is equivalent to 'e[id~=myid]', corresponds to 
-  '(:tag e :attrs ((id \"myid\"))).
+  '(:tag e :attrs ((id . \"myid\"))).
 - 'e.class1.class2', which is equivalent to 'e[class~=class1][class~=class2]',
-  corresponds to '(:tag e :attrs ((class \"class1\") (class \"class2\"))).
+  corresponds to '(:tag e :attrs ((class . \"class1 class2\"))).
 
 Combinator selectors (space, >, +, ~ combinators are supported):
-- 'e1 e2' corresponds to '(descendant e1 e2)
-- 'e1 > e2' corresponds to '(child e1 e2)
-- 'e1 + e2' corresponds to '(adj-sibling e1 e2)
-- 'e1 ~ e2' corresponds to '(gen-sibling e1 e2)
+- 'e1 e2' corresponds to '(=> e1 e2)
+- 'e1 > e2' corresponds to '(> e1 e2)
+- 'e1 + e2' corresponds to '(+ e1 e2)
+- 'e1 ~ e2' corresponds to '(~ e1 e2)
 
 Besides, selectors are composable, e.g. 'ul > li#selected + li > a' corresponds 
 to 
-
-    '(child (:tag ul)
-	(adj-sibling
-	    (:tag li :attrs ((id \"selected\")))
-	    (child (:tag li)
-		(:tag a))))
+   '((:tag ul)
+    (> (:tag li :attrs ((id \"selected\"))))
+    (+ (:tag li))
+    (> (:tag a)))
 "
-  (if (or (plist-member selector :tag)
-	  (plist-member selector :attrs))
-      ;; simple selector
-      (org-dict--dom-select-base dom selector)
-    ;; combinator selector
-    (let* ((combinator (car selector)))
-      (cond ((eq combinator 'descendant))
-	    ((eq combinator 'child))
-	    ((eq combinator 'adj-sibling))
-	    ((eq combinator 'gen-sibling))) 
-      )))
+  (cl-loop with combinator-selectors = (cdr selector)
+	   with base-selector = (car selector)
+	   with nodes = (org-dict--dom-simple-select dom base-selector)
+	   for combinator-selector in combinator-selectors
+	   for combinator = (car combinator-selector)
+	   for selector = (cadr combinator-selector)
+	   do (setq nodes (cond ((eq combinator '=>) (org-dict--dom-simple-select nodes selector))
+				((eq combinator '>)  (org-dict--select-child dom nodes selector))
+				((eq combinator '+)  (org-dict--select-subsequent-sibling dom nodes selector t))
+				((eq combinator '~)  (org-dict--select-subsequent-sibling dom nodes selector))))
+	   finally return nodes))
 
 (defun org-dict--replace-node-in-dom (dom rules)
   "Given a DOM, do node transformation following the RULES.

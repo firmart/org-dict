@@ -57,15 +57,21 @@ One word could have multiple entries (as noun, as adjective, etc.)"
 (defun org-dict-cntrl--parse-entry-content (dom)
   (dom-texts (dom-by-id dom "lexicontent")))
 
+(defun org-dict-cntrl--fill-region (beg end)
+  (let ((fill-column most-positive-fixnum))
+    (fill-region beg end))
+  (fill-region beg end))
+
 (defun org-dict-cntrl--parse-entry (dom)
   "Parse a single word's entry whose the dom is DOM into an org buffer string."
   (let* ((entry-name (org-dict-cntrl--current-entry-name dom)))
-  (with-temp-buffer
-    (org-mode)
-    (org-insert-heading)
-    (insert entry-name "\n")
-    (insert (org-dict-cntrl--parse-entry-content dom))
-    (buffer-substring (point-min) (point-max)))))
+    (with-temp-buffer
+      (org-mode)
+      (org-insert-heading)
+      (insert entry-name "\n")
+      (insert (org-dict-cntrl--parse-entry-content dom))
+      (org-dict-cntrl--fill-region (point-min) (point-max))
+      (buffer-substring (point-min) (point-max)))))
 
 ;;; Interactive functions
 (defun org-dict-cntrl-parse (dom &optional url)
