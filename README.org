@@ -1,0 +1,21 @@
+
+
+
+* Dictionaries
+** TLFi
+*** Features [2/6]
+- [X] Put example into Org quote block.
+- [-] Markup
+  - [X] Translate HTML basic markup (bold, italic) into Org mode markup.
+  - [X] Translate superscript into Org mode superscript.
+  - [ ] Handle small caps: put them in bold, and whenever they are in lowercase, uppercase the first letter.
+- [ ] Interlink (/e.g./ "v. dont 1reSection I B 4 a δ").
+- [X] Convert entries numbering (1reSection I A 1 a α) into Org heading and
+  numbered list.
+- [ ] Option to enable abbreviation expansion.
+- [ ] LaTeX/PDF output.
+*** To fix [2/4]
+- [X] Remove numerotation of numbered examples.
+- [X] Period immediately followed by italic tag (sol. put a zero-width space before slash)
+- [ ] Replace in =<tlf_paraputir>= Unicode dash (−) to ASCII dash (-)
+- [ ] Enable multi-line markup

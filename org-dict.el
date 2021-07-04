@@ -49,8 +49,8 @@
 (defcustom org-dict-dictionaries nil
   "List of dictionaries used in output by default."
   :type '(repeat string)
-  :group 'org-glaux
-  :package-version '(org-glaux . "0.1"))
+  :group 'org-dict
+  :package-version '(org-dict . "0.1"))
 
 ;;; Internal variables
 (defvar org-dict--buffer "*org-dict*")
@@ -61,13 +61,14 @@
     (when (get-buffer org-dict--buffer)
       (kill-buffer org-dict--buffer))
     (with-current-buffer (get-buffer-create org-dict--buffer)
-      (org-mode)
-      (mapc #'insert (funcall parser dom url))
-      (read-only-mode)
-      (goto-char (point-min))
-      (setq org-cycle-global-status 'overview)
-      (org-global-cycle)
-      (switch-to-buffer org-dict--buffer))))
+      (let ((org-use-sub-superscripts t)
+	    (org-cycle-global-status 'overview))
+	(org-mode)
+	(mapc #'insert (funcall parser dom url))
+	(read-only-mode)
+	(goto-char (point-min))
+	(org-global-cycle)
+	(switch-to-buffer org-dict--buffer)))))
 
 ;;; Interactive functions
 (defun org-dict ()

@@ -30,8 +30,29 @@
 ;;; Code:
 ;;; Custom group
 ;;;; General settings
+(defcustom org-dict-indentation-width 4
+  "The number of spaces used for indentation."
+  :type 'integer
+  :group 'org-dict
+  :package-version '(org-dict . "0.1"))
+
 ;;; Internal variables
 ;;; Internal functions
+;;;; Utilities
+(defun org-dict--fill-region (beg end)
+  ;; (let ((fill-column most-positive-fixnum))
+    ;; (org-fill-paragraph nil (list beg end))
+  (mark-whole-buffer)
+  (org-fill-paragraph))
+;; )
+
+(defun org-dict--remove-redundant-spaces (str)
+  "Remove redundant spaces which are ignored by HTML or LaTeX rendering."
+  (string-trim 
+   (replace-regexp-in-string
+    "\\( \\)+" " " str)))
+
+;;;; DOM related
 (defun org-dict--url-to-dom (url)
   (let* ((buffer (url-retrieve-synchronously url t t))
 	 (code (url-http-symbol-value-in-buffer 'url-http-response-status buffer)))
@@ -88,28 +109,12 @@ Before using this function, make sure that:
 		    else if (not value)
 		      do (setq match-result (member key (mapcar #'car (dom-attributes node)))) 
 		    else if (eq key 'class)
-		    do (setq match-result (org-dict--dom-node-class-p (split-string value) node))
+	              do (setq match-result (org-dict--dom-node-class-p (split-string value) node))
 		    else
 		      do (setq match-result (member (cons key value) (dom-attributes node)))
 
 		    if (not match-result) return nil
 		    finally return t))))
-
-;; (defun org-dict--dom-node-tag-id-class-p (tag id class node)
-;;   "Return `t' whenever NODE matches TAG and optional attributes ID or CLASS."
-;;   (and (or (not tag) (eq tag (car node)))
-;;        (or (not id) (string= id (dom-attr node 'id)))
-;;        (or (not class) (org-dict--dom-node-class-p class node))))
-
-;; (defun org-dict--dom-by-class (dom classes) 
-;;   "Return nodes from DOM that belongs to CLASSES.
-;; 
-;; CLASSES can be given as a list of string for multiple classes or
-;; as a string for a single class.
-;; 
-;; Unlike `dom-by-class' which matches nodes using CLASSES as a regexp, 
-;; this function matches nodes whose classes contain exactly CLASSES."
-;;   (dom-search dom (lambda (node) (org-dict--dom-node-class-p classes node))))
 
 (defun org-dict--dom-by-attrs (dom attrs) 
   "Return nodes from DOM that match attributes ATTRS.
@@ -124,27 +129,6 @@ E.g. '((class . \"bottombox\")) will match nodes having attribute '((class . \"b
 		  (lambda (node)
 		    (org-dict--dom-node-simple-selector-p `(:attrs ,attrs) node))))))
 
-;; (when node-attrs
-;; 			(cl-loop for (key . value) in node-attrs
-;; 				 with node-class-list
-;; 				 ;; `value' is nil (boolean attribute). Check whether 
-;; 				 ;; - `key' is included in the query attributes.
-;; 				 ;; - the query specified a value for `key'.
-;; 				 if (not value) do 'nothing and
-;; 				    if (or (not (member key attrs-keys))
-;; 					    (alist-get key attrs))
-;; 			              return nil end
-;; 				 ;; `value' is non-nil.
-;; 				 ;; Handle specially the case `key' = class as we need to consider `value' as a set.
-;; 				 else if (eq key 'class) do (setq node-class-list (org-dict--dom-node-class node))
-;; 				   and if (not (cl-subsetp attrs-class-list node-class-list :test 'string=))
-;; 				     return nil end
-;; 				 ;; Now, we handle arbitrary non-nil key-value.
-;; 				 else if (not (and (member key attrs-keys)
-;; 						   (string= value (alist-get key attrs))))
-;; 				   return nil end
-;; 				 (message "node key:%s value:%s" key value
-;; 				 finally return t)))
 (defun org-dict--dom-simple-select (dom-or-nodes selector)
   "Given a simple SELECTOR, return its query result on DOM-OR-NODES.
 

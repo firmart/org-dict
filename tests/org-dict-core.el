@@ -11,6 +11,12 @@
 
 (org-dict-test--setup-dummy-dom)
 
+;;; Utility
+(ert-deftest org-dict-test--redundant-spaces ()
+  (should (string= (org-dict--remove-redundant-spaces " abc def     ghi      kl m  no   ")
+		   "abc def ghi kl m no"  )))
+
+;;; Dom
 (ert-deftest org-dict-test--url-to-dom ()
   (ert-skip "Not implemented yet"))
 
