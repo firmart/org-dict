@@ -19,3 +19,7 @@
 - [X] Period immediately followed by italic tag (sol. put a zero-width space before slash)
 - [ ] Replace in =<tlf_paraputir>= Unicode dash (−) to ASCII dash (-)
 - [ ] Enable multi-line markup
+
+* Todo [0/2]
+- [ ] Integration with =pdfview=
+- [ ] Integration with =guess-language=

@@ -29,10 +29,27 @@
 ;; TLFi available on CNRTL (https://cnrtl.fr/definition/).
 
 ;;; Code:
-(require 'org-dict-core)
 (require 'cl-lib)
+(require 'org-dict-core)
 ;;; Custom group
 ;;;; General settings
+(defcustom org-dict-tlfi-heading-max-depth 2
+  "The maximal depth of produced Org headings.
+
+All nodes of a greater depth will become a numbered items instead of an 
+Org heading. This variable accepts integer ranging from 0 to 5.
+The least is the top-level numbering:
+- 0 for '1re Section'
+- 1 for 'I. -'
+- 2 for 'A. -'
+- 3 for '1.'
+- 4 for 'a)'
+- 5 for 'α)'
+"
+  :type 'integer
+  :group 'org-dict
+  :package-version '(org-dict . "0.1"))
+
 ;;; Internal variables
 ;;;;   Internal functions
 (defun org-dict-tlfi--total-entries (dom)
@@ -71,7 +88,7 @@ One word could have multiple entries (as noun, as adjective, etc.)"
     (mapc (lambda (node)
 	    (let* ((content (dom-texts node ""))
 		   (unumbered-content (replace-regexp-in-string "^[0-9]+\\. \\(.*\\)" "\\1" content)))
-	      (org-dict--dom-replace-node dom node (concat "\n#+BEGIN_QUOTE\n" unumbered-content "\n#+END_QUOTE\n"))))
+	      (org-dict--dom-replace-node dom node (concat "\n\n#+BEGIN_QUOTE\n" unumbered-content "\n#+END_QUOTE\n\n"))))
 	  cexemple-nodes)))
 
 (defun org-dict-tlfi--remove-cdevette (dom)
@@ -148,30 +165,36 @@ One word could have multiple entries (as noun, as adjective, etc.)"
 	 (cplan-italic-nodes (org-dict--dom-select dom '((:attrs ((class . "tlf_cplan")))
 							 (=> (:tag i)))))
 	 (target-italic-nodes (cl-set-difference all-italic-nodes cplan-italic-nodes))
-	 (target-smallcaps-nodes (org-dict--dom-select dom '((:attrs ((class . "tlf_smallcaps")))))))
+	 (all-smallcaps-nodes (org-dict--dom-select dom '((:attrs ((class . "tlf_smallcaps")))))))
 
     (mapc (lambda (node)
 	   (org-dict-tlfi--node-replace-with-surround dom node "*"))
 	   target-bold-nodes)
     (mapc (lambda (node)
 	   (org-dict-tlfi--node-replace-with-surround dom node "*"))
-	  target-smallcaps-nodes)
+	  all-smallcaps-nodes)
     (mapc (lambda (node)
 	   (org-dict-tlfi--node-replace-with-surround dom node "/"))
 	  target-italic-nodes)))
 
-(defvar org-dict-tlfi--cplan-regexps '("^[0-9].*Section\\.$"
-					"^\\([I]\\{1,3\\}\\|[I]?V\\|V[I]\\{1,3\\}\\|[I]?X\\)\\.[ ]?−$"
-					"^[A-H]\\.[ ]?−$" "^[0-9]\\.[ ]?$" "^[a-z])$"
-					"[αβγδϵζηθικλ])"))
+(defvar org-dict-tlfi--cplan-regexps '("^\\([0-9]+?.*Section\\)\\.$"
+					"^\\([I]\\{1,3\\}\\|[I]?V\\|V[I]\\{1,3\\}\\|[I]?X\\)\\.[ ]*?−$"
+					"^\\([A-H]\\)\\.[ ]*?−$"
+					"^\\([0-9]+?\\)\\.[ ]*?$"
+					"^\\([a-z]\\))$"
+					"\\([αβγδϵζηθικλ]\\))"))
 
-(defun org-dict-tlfi--parse-cplan (string)
-  "Parse TLFi numbering STRING. Return its associated level."
-  (cl-loop with regexps = org-dict-tlfi--cplan-regexps
-	   with level = 0
-	   for regexp in regexps 
-	   when (string-match regexp string) return level
-	   do (setq level (1+ level))
+(defun org-dict-tlfi--parse-cplan-string (string)
+  (cl-loop for regexp in org-dict-tlfi--cplan-regexps
+	   when (string-match regexp string) return (replace-regexp-in-string regexp "\\1" string)
+	   finally (error "Cannot parse tlf_cplan numbering: %s" string)))
+
+(defun org-dict-tlfi--parse-cplan-depth (string)
+  "Parse TLFi numbering STRING. Return its associated depth."
+  (cl-loop with depth = 0
+	   for regexp in org-dict-tlfi--cplan-regexps
+	   when (string-match regexp string) return depth
+	   do (setq depth (1+ depth))
 	   finally (error "Cannot match tlf_cplan numbering: %s" string)))
 
 (defun org-dict-tlfi--space-or-newline (node)
@@ -182,47 +205,73 @@ One word could have multiple entries (as noun, as adjective, etc.)"
       " "
     "\n"))
 
-(defun org-dict-tlfi--create-section-title (title current-depth numbering)
-  "Given CURRENT-DEPTH and TITLE, create a section's title."
-  (if (<= current-depth 2) 
+(defun org-dict-tlfi--create-section-title (title root-depth current-depth numbering)
+  "Create a Org mode section's title.
+
+Based on TITLE, ROOT-DEPTH (the depth of the first node visited), 
+CURRENT-DEPTH and NUMBERING"
+  (let ((title (if (not title) "" title)))
+  (if (<= current-depth org-dict-tlfi-heading-max-depth) 
       ;; Org mode heading
-      (format "%s %s\n" (make-string (+ current-depth 2) ?*) title)
+      (format "%s (%s) %s\n" (make-string (- (+ current-depth org-dict-tlfi-heading-max-depth) root-depth) ?*) numbering title)
     ;; Org mode numbered list
-    (format "%s%s. %s " (make-string (* (- current-depth 2) org-dict-indentation-width) ? ) numbering title)))
+    (format "%s%s. %s " (make-string (* (- current-depth org-dict-tlfi-heading-max-depth) org-dict-indentation-width) ? ) numbering title))))
 
 ;; Source of sigles http://www.languefrancaise.net/forum/viewtopic.php?id=11703
-(defun org-dict-tlfi--parse-parah (parah-node)
+(defun org-dict-tlfi--parse-parah (parah-node &optional root-depth)
   "Parse TLFi recursive div node of class tlf_parah."
-  (cl-loop for node in (dom-children parah-node)
-	   with level-numbering = 1
-	   with current-depth
-	   with title
-	   with title-settled?
-	   if (stringp node)
-	       collect (replace-regexp-in-string "^[ ]*$" "" node)
-	   else if (org-dict--dom-node-simple-selector-p '(:tag div :attrs ((class . "tlf_parah"))) node)
-	       if (not title-settled?) do (setq title-settled? t) end
-	       and collect (org-dict-tlfi--create-section-title title current-depth level-numbering)
-	       and collect (apply #'concat (flatten-tree (org-dict-tlfi--parse-parah node)))
-	       and do (setq level-numbering (1+ level-numbering))
-	   else if (org-dict--dom-node-simple-selector-p '(:tag span :attrs ((class . "tlf_cplan"))) node)
-	        do (setq current-depth (org-dict-tlfi--parse-cplan (dom-texts node "")))
-	   else if (or (org-dict--dom-node-simple-selector-p '(:tag span :attrs ((class . "tlf_cemploi"))) node)
-                       (org-dict--dom-node-simple-selector-p '(:tag span :attrs ((class . "tlf_ccrochet"))) node))
-		    if (not title-settled?) do (setq title (concat title (dom-texts node "")))
-		    else collect (concat (apply #'concat (flatten-tree (dom-texts node ""))) " ")
-		    end
-	   else if (not title-settled?) do (setq title-settled? t) and
-		    collect (org-dict-tlfi--create-section-title title current-depth level-numbering)
-		end and
-		collect (apply #'concat (flatten-tree (dom-texts node ""))) and
-		collect (org-dict-tlfi--space-or-newline node)
-	   end))
+  (let* ((children (dom-children parah-node))
+	 (total-nodes (length children)))
+  (cl-loop for node in children
+       with node-count = 0
+       with root-depth = root-depth
+       with current-depth
+       with numbering-string
+       with title
+       with title-settled?
+       do (setq node-count (1+ node-count))
+       if (stringp node)
+            collect (replace-regexp-in-string "^[ ]*$" "" node)
+       else if (org-dict--dom-node-simple-selector-p '(:tag span :attrs ((class . "tlf_cplan"))) node)
+            do (setq current-depth (org-dict-tlfi--parse-cplan-depth (dom-texts node ""))) and
+            do (setq numbering-string (org-dict-tlfi--parse-cplan-string (dom-texts node ""))) and
+            when (not root-depth) do (setq root-depth current-depth) end
+       else if (or (org-dict--dom-node-simple-selector-p '(:tag span :attrs ((class . "tlf_cemploi"))) node)
+                   (org-dict--dom-node-simple-selector-p '(:tag span :attrs ((class . "tlf_ccrochet"))) node)
+                   (org-dict--dom-node-simple-selector-p '(:tag span :attrs ((class . "tlf_cdomaine"))) node))
+            if (not title-settled?)
+                do (setq title (concat title " " (dom-texts node "")))
+            else collect (concat (apply #'concat (flatten-tree (dom-texts node ""))) " ")
+            end
+       else if (org-dict--dom-node-simple-selector-p '(:tag div :attrs ((class . "tlf_parah"))) node)
+            if (not title-settled?)
+                do (setq title-settled? t) and
+                collect (org-dict-tlfi--create-section-title title root-depth current-depth numbering-string)
+            end and
+            collect (apply #'concat (flatten-tree (org-dict-tlfi--parse-parah node root-depth)))
+       else
+            if (not title-settled?)
+                do (setq title-settled? t) and
+                collect (org-dict-tlfi--create-section-title title root-depth current-depth numbering-string)
+            end and
+            collect (apply #'concat (flatten-tree (dom-texts node ""))) and
+            collect (org-dict-tlfi--space-or-newline node)
+       end
+       if (= total-nodes node-count)
+           if (not title-settled?) 
+               do (setq title-settled? t) and
+               collect (org-dict-tlfi--create-section-title title root-depth current-depth numbering-string)
+	   end and
+	   ;;do (message "numbering-string:%s, node:'%s'" numbering-string (if (stringp node) node (car node))) and
+	   collect "\n"
+       end)))
 
 (defun org-dict-tlfi--parse-entry-content (dom)
-  (let ((article-node (org-dict--dom-select dom ;; #lexicontent > .div
+  (let* ((article-node (org-dict--dom-select dom ;; #lexicontent > .div
 						      '((:attrs ((id . "lexicontent")))
-							(> (:tag div))))))
+							(> (:tag div)))))
+	 (nodes (dom-children article-node))
+	 (total-nodes (length nodes)))
   ;; (org-dict-tlfi--remove-cdevette article-node)
   (org-dict-tlfi--replace-markup article-node)
   (org-dict-tlfi--remove-italic article-node)
@@ -231,18 +280,24 @@ One word could have multiple entries (as noun, as adjective, etc.)"
   ;; (org-dict-tlfi--replace-numbering article-node)
   (apply #'concat
 	 (flatten-tree
-	  (cl-loop for node in (dom-children article-node)
-		   with top-level-numbering = 1
-		   if (org-dict--dom-node-simple-selector-p '(:tag div :attrs ((class . "tlf_parah"))) node)
-		     ;; do (mapc (lambda (child) (message "node:'%s', class:%s" (if (stringp child) child (car child)) (when (not (stringp child)) (org-dict--dom-node-class child)))) (dom-children node)) and
-	               ;; do (message "node:%s, class:%s, level-numbering:%s" (car node) (org-dict--dom-node-class node) top-level-numbering) and
-                       collect (org-dict-tlfi--parse-parah node) and
-                       do (setq top-level-numbering (1+ top-level-numbering))
+	  (cl-loop for node in nodes
+		   ;;with node-count = 0
+		   ;;do (setq node-count (1+ node-count))
+		   if (stringp node) do 'nothing
+		   else if (org-dict--dom-node-simple-selector-p '(:tag div :attrs ((class . "tlf_parah"))) node)
+                       collect (org-dict-tlfi--parse-parah node)
                    else if (org-dict--dom-node-simple-selector-p '(:tag div :attrs ((class . "tlf_cvedette"))) node)
 		       do 'nothing
-		   else if (org-dict--dom-node-simple-selector-p '(:tag span :attrs ((class . "tlf_ccrochet"))) node)
-		       collect (concat (apply #'concat (flatten-tree (dom-texts node ""))) "\n\n")
-		   else collect (dom-texts node ""))))))
+		   ;;else if (org-dict--dom-node-simple-selector-p '(:tag span :attrs ((class . "tlf_ccrochet"))) node)
+		   ;;    collect (concat (apply #'concat (flatten-tree (dom-texts node ""))) "\n")
+		   else collect (concat (apply #'concat (flatten-tree (dom-texts node ""))) "\n\n")
+	           end
+		  ;; if (= total-nodes node-count)
+		  ;; do (message "node-count:%s, node:'%s', node-class:%s" node-count (if (stringp node) node (car node))
+		  ;;	       (when (not (stringp node)) (org-dict--dom-node-class node))) and
+		  ;;     collect "\n"
+		  ;; end
+		       )))))
 
 (defun org-dict-tlfi--parse-entry (dom)
   "Parse a single word's entry whose the dom is DOM into an org buffer string."
@@ -256,15 +311,22 @@ One word could have multiple entries (as noun, as adjective, etc.)"
 	(org-dict-tlfi--parse-entry-content dom)))
       (insert "\n")
       ;; TODO add etymology
-      ;; TODO use org-element API to fill paragraph and list
-      (org-dict--fill-region (point-min) (point-max))
+      (org-dict--fill-region)
       (buffer-substring (point-min) (point-max)))))
 
-;;; Interactive functions
-(defun org-dict-tlfi-parse (dom &optional url)
-  "Parse a DOM coming from TLFI and outputs in Org."
-  (let* ((dom-list (org-dict-tlfi--dom-list dom url)))
+;;; Main functions
+(defun org-dict-tlfi-parse (dom url)
+  "Parse a DOM coming from TLFI and outputs the result in Org mode.
+
+If a word has multiple entries, they will be all parsed."
+  (let ((dom-list (org-dict-tlfi--dom-list dom url)))
     (mapcar #'org-dict-tlfi--parse-entry dom-list)))
+
+(defun org-dict-tlfi-not-found-p (dom)
+  "Given a DOM, return non-nil if TLFi cannot find the entry, nil otherwise. "
+  (not (org-dict--dom-select dom ;; #lexicontent > .div
+			'((:attrs ((id . "lexicontent")))
+			  (> (:tag div))))))
 
 ;;; org-dict-tlfi.el ends here
 (provide 'org-dict-tlfi)

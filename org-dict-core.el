@@ -39,12 +39,11 @@
 ;;; Internal variables
 ;;; Internal functions
 ;;;; Utilities
-(defun org-dict--fill-region (beg end)
-  ;; (let ((fill-column most-positive-fixnum))
-    ;; (org-fill-paragraph nil (list beg end))
-  (mark-whole-buffer)
-  (org-fill-paragraph))
-;; )
+(defun org-dict--fill-region ()
+ (mark-whole-buffer)
+ (org-fill-paragraph nil (list (point-min) (point-max)))
+  ;; (org-element-map (org-element-parse-buffer) org-element-all-elements #'org-fill-element)
+  )
 
 (defun org-dict--remove-redundant-spaces (str)
   "Remove redundant spaces which are ignored by HTML or LaTeX rendering."
