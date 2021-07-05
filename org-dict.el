@@ -35,7 +35,7 @@
 ;; Built-in Emacs lib
 (require 'org)
 (require 'ox-html)
-(require 'cl-lib) 
+(require 'cl-lib)
 ;; Dictionary parse engines
 (require 'org-dict-core)
 (require 'org-dict-tlfi)
@@ -56,10 +56,10 @@
 
 (defcustom org-dict-services
   '((:dict tlfi
-     :name "TLFi"
-     :url "https://cnrtl.fr/definition/%s"
-     :parser org-dict-tlfi-parse
-     :not-found-p org-dict-tlfi-not-found-p))
+	   :name "TLFi"
+	   :url "https://cnrtl.fr/definition/%s"
+	   :parser org-dict-tlfi-parse
+	   :not-found-p org-dict-tlfi-not-found-p))
   "List of dictionary's service available in Org-dict.
 
 Each service must contain the following key-values:
@@ -69,9 +69,8 @@ Each service must contain the following key-values:
 - `:parser' : The parser function of the dictionary which takes a DOM returned
 by `libxml-parse-html-region' and a URL.
 - `:not-found-p' : A predicate that returns non-nil whenever the given DOM
-  indicates a failed query. It will be used to error out early in case the web page 
-doesn't response with a 404 error when a word entry cannot be found.
-"
+indicates a failed query.  It will be used to error out early in case the web
+page doesn't response with a 404 error when a word entry cannot be found."
   :type 'plist
   :group 'org-dict
   :package-version '(org-dict . "0.1"))
@@ -93,10 +92,11 @@ doesn't response with a 404 error when a word entry cannot be found.
   "An alist of (<lang-symbol> . <dict-symbols>).
 
 <lang-symbol> must be an ISO 639-1 language code.
-<dict-symbols> is a list of dictionaries symbols appearing in `org-dict-dictionaries'.
+<dict-symbols> is a list of dictionaries symbols appearing in
+`org-dict-dictionaries'.
 
 This alist is used to display results gathered from all dictionaries of a
-specific language. 
+specific language.
 See `\\[universal-argument] \\[universal-argument]' `org-dict-at-point'."
   :type '(alist
           :key-type (symbol :tag "Language")
@@ -107,7 +107,7 @@ See `\\[universal-argument] \\[universal-argument]' `org-dict-at-point'."
 ;;; Internal variables
 ;;; Internal functions
 (defun org-dict--parse (word service)
-  "Parse a dictionary and return the result"
+  "Parse query result of WORD from the dictionary SERVICE."
   (let* ((url (format (plist-get service :url) (downcase word)))
 	 (dom (org-dict--url-to-dom url))
 	 (parser (plist-get service :parser))
@@ -122,16 +122,15 @@ See `\\[universal-argument] \\[universal-argument]' `org-dict-at-point'."
 (defun org-dict (word &optional dict-or-dicts arg)
   "Query the definition of WORD in DICT-OR-DICTS.
 
-DICT-OR-DICTS is either a symbol or a list of symbols. They must match
+DICT-OR-DICTS is either a symbol or a list of symbols.  They must match
 the field `:dict' of a service in `org-dict-services'.
 
-With a `\\[universal-argument]' prefix argument, it prompts to choose 
+With a `\\[universal-argument]' prefix argument ARG, it prompts to choose
 a specific dictionary.
 
-With a `\\[universal-argument] \\[universal-argument]' prefix argument, 
-it prompts to choose a language and display in the buffer `org-dict-buffer' 
-all results gathered from dictionaries of that language.
-"
+With a `\\[universal-argument] \\[universal-argument]' prefix argument ARG,
+it prompts to choose a language and display in the buffer `org-dict-buffer'
+all results gathered from dictionaries of that language."
   (interactive "MWord: \ni\nP")
   (let* ((dicts (or (when dict-or-dicts
 		      (if (symbolp dict-or-dicts)
@@ -155,18 +154,14 @@ all results gathered from dictionaries of that language.
 					   when (eq dict (plist-get service :dict))
 					   return service))
 				dicts))
-	 (urls-parsers (mapcar (lambda (service)
-				 (list (format (plist-get service :url) (downcase word))
-				       (plist-get service :parser)))
-			       dict-services))
 	 (org-use-sub-superscripts t)
 	 (org-cycle-global-status 'overview)
 	 (old-org-emphasis-regexp-components org-emphasis-regexp-components))
 
-    (when (get-buffer org-dict--buffer)
-      (kill-buffer org-dict--buffer))
+    (when (get-buffer org-dict-buffer)
+      (kill-buffer org-dict-buffer))
 
-    (with-current-buffer (get-buffer-create org-dict--buffer)
+    (with-current-buffer (get-buffer-create org-dict-buffer)
       (org-mode)
       ;; Turn off some time-consuming minor mode
       ;; (Seriously, spell check a dictionary ???)
@@ -175,24 +170,26 @@ all results gathered from dictionaries of that language.
       ;; Allow markup to span over 10 lines
       (setcar (nthcdr 4 org-emphasis-regexp-components) 9)
       (org-set-emph-re 'org-emphasis-regexp-components org-emphasis-regexp-components)
-      (mapc (lambda (service) (org-dict--parse word service))
-	    dict-services)
-      (read-only-mode)
-      (goto-char (point-min))
-      (org-global-cycle)
-      (org-set-emph-re 'org-emphasis-regexp-components old-org-emphasis-regexp-components))
-    (pop-to-buffer org-dict--buffer)))
+      (condition-case nil
+	  (progn
+	    (mapc (lambda (service) (org-dict--parse word service))
+		  dict-services)
+	    (read-only-mode)
+	    (goto-char (point-min))
+	    (org-global-cycle)
+	    (org-set-emph-re 'org-emphasis-regexp-components old-org-emphasis-regexp-components)
+	    (pop-to-buffer org-dict-buffer))
+	(error (kill-buffer org-dict-buffer))))))
 
 (defun org-dict-at-point (&optional arg)
   "Search a word at point using Org-dict.
 
-With a `\\[universal-argument]' prefix argument, prompt to choose 
+With a `\\[universal-argument]' prefix argument ARG, prompt to choose
 a specific dictionary.
 
-With a `\\[universal-argument] \\[universal-argument]' prefix argument, 
-prompt to choose a language and display in the buffer `org-dict-buffer' 
-all results gathered from dictionaries of that language.
-"
+With a `\\[universal-argument] \\[universal-argument]' prefix argument ARG,
+prompt to choose a language and display in the buffer `org-dict-buffer'
+all results gathered from dictionaries of that language."
   (interactive)
   (when-let* ((word-at-point (thing-at-point 'word))
 	      (word (substring-no-properties word-at-point)))

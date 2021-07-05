@@ -39,22 +39,24 @@
 ;;; Internal variables
 ;;; Internal functions
 ;;;; Utilities
-(defun org-dict--fill-region ()
+(defun org-dict--org-fill-whole-buffer ()
+  "Fill the whole Org buffer."
  (mark-whole-buffer)
  (org-fill-paragraph nil (list (point-min) (point-max))))
 
 (defun org-dict--remove-redundant-spaces (str)
-  "Remove redundant spaces which are ignored by HTML or LaTeX rendering."
-  (string-trim 
+  "Remove redundant spaces in STR which are ignored by HTML or LaTeX rendering."
+  (string-trim
    (replace-regexp-in-string
     "\\( \\)+" " " str)))
 
 ;;;; DOM related
 (defun org-dict--url-to-dom (url)
+  "Given a URL, return the DOM of the fetched response (when HTTP status = 200)."
   (let* ((buffer (url-retrieve-synchronously url t t))
 	 (code (url-http-symbol-value-in-buffer 'url-http-response-status buffer)))
     (when (= code 200)
-      (with-current-buffer buffer 
+      (with-current-buffer buffer
         ;; Move to the end of the headers
         (goto-char (point-min))
         (re-search-forward "^\r?\n" nil t)
@@ -73,7 +75,9 @@ Before using this function, make sure that:
     (dom-remove-node parent node)))
 
 (defun org-dict--dom-replace-nodes (dom nodes new-nodes)
-  "As `org-dict--dom-replace-node', but accepts two lists of nodes."
+  "As `org-dict--dom-replace-node', but with two lists of NODES and NEW-NODES.
+
+DOM is an HTML DOM."
   (cl-loop for node in nodes
 	   for new-node in new-nodes
 	   do (org-dict--dom-replace-node dom node new-node)))
@@ -84,7 +88,7 @@ Before using this function, make sure that:
     (when node-class (split-string node-class))))
 
 (defun org-dict--dom-node-class-p (classes node)
-  "Return `t' whenever NODE has CLASSES as classes.
+  "Return t whenever NODE has CLASSES as classes.
  
  CLASSES can be given as a list of string for multiple classes or
  as a string for a single class."
@@ -94,16 +98,16 @@ Before using this function, make sure that:
       (member classes node-classes))))
 
 (defun org-dict--dom-node-simple-selector-p (simple-selector node)
-  "Return `t' whenever NODE matches a SIMPLE-SELECTOR query."
+  "Return t whenever NODE match a SIMPLE-SELECTOR query."
   (or (not simple-selector)
       (and (let ((tag (plist-get simple-selector :tag)))
 	     (or (not tag) (eq tag (car node))))
 	   (cl-loop for (key . value) in (plist-get simple-selector :attrs)
 		    with match-result
 		    if (not key)
-		      do (error "attribute selector must have a key")
+		      do (error "Attribute selector must have a key")
 		    else if (not value)
-		      do (setq match-result (member key (mapcar #'car (dom-attributes node)))) 
+		      do (setq match-result (member key (mapcar #'car (dom-attributes node))))
 		    else if (eq key 'class)
 	              do (setq match-result (org-dict--dom-node-class-p (split-string value) node))
 		    else
@@ -112,10 +116,10 @@ Before using this function, make sure that:
 		    if (not match-result) return nil
 		    finally return t))))
 
-(defun org-dict--dom-by-attrs (dom attrs) 
+(defun org-dict--dom-by-attrs (dom attrs)
   "Return nodes from DOM that match attributes ATTRS.
 
-Unlike `dom-by-class' which matches nodes using regexp, 
+Unlike `dom-by-class' which matches nodes using regexp,
 this function matches nodes whose classes contain those given in ATTRS.
 E.g. '((class . \"bottombox\")) will match nodes having attribute '((class . \"box bottombox\"))"
   (let* ((attrs-keys (remove nil (mapcar #'car attrs))))
@@ -128,11 +132,12 @@ E.g. '((class . \"bottombox\")) will match nodes having attribute '((class . \"b
 (defun org-dict--dom-simple-select (dom-or-nodes selector)
   "Given a simple SELECTOR, return its query result on DOM-OR-NODES.
 
-Specifically, 
-- if DOM-OR-NODES is a DOM (i.e. not a nodes list), the result is the query of a simple SELECTOR.
-- if DOM-OR-NODES is a nodes list (say result from a selector s1), then the result 
-  corresponds to 's1 SELECTOR' (namely the result of the descendant combinator of s1 and SELECTOR).
-"
+Specifically,
+- if DOM-OR-NODES is a DOM (i.e. not a nodes list), the result is the query of a
+  simple SELECTOR.
+- if DOM-OR-NODES is a nodes list (say result from a selector s1), then the
+  result corresponds to 's1 SELECTOR' (namely the result of the descendant
+  combinator of s1 and SELECTOR)."
   
    ;; If there is only a single node, wrap it in a list.
 
@@ -152,7 +157,7 @@ Specifically,
 			 (tag (dom-by-tag dom tag))))))
 
 (defun org-dict--dom-p (dom)
-  "Return `t' whenever DOM is a dom (and not a list of nodes)."
+  "Return t whenever DOM is a dom (and not a list of nodes)."
   (symbolp (car dom)))
 
 (defun org-dict--select-child (dom nodes selector)
@@ -169,8 +174,7 @@ Specifically,
 (defun org-dict--dom-nodes-subsequent-sibling (dom nodes &optional adjacent?)
   "Given NODES from DOM, return a list of subsequent siblings of them.
 
-If ADJACENT? is non-nil, then hold only one subsequent sibling.
-"
+If ADJACENT? is non-nil, then hold only one subsequent sibling."
   (cl-remove-duplicates
    (cl-loop for node in nodes
 	    for siblings = (dom-non-text-children (dom-parent dom node))
@@ -192,9 +196,9 @@ If ADJACENT? is non-nil, return the result of 's1 + SELECTOR'."
 (defun org-dict--dom-select (dom selector)
   "Select DOM node given CSS attribute/combinator SELECTOR.
 
-A SELECTOR has the following syntax: 
+A SELECTOR has the following syntax:
 <selector> := '(<simple_selector> <combinator_selector>...)
-<simple_selector> := '(:tag <tag> :attrs <attributes>) 
+<simple_selector> := '(:tag <tag> :attrs <attributes>)
 <combinator_selector> := '(<combinator> <simple_selector>)
 where
 <tag> is a symbol
@@ -210,7 +214,7 @@ Attribute selectors (only e[key] and e[key~=value] is supported):
 - '[key]', corresponds to (:attrs ((key)))
 - 'e[key]', corresponds to (:tag e :attrs ((key)))
 - 'e[key~=\"value\"]', corresponds to (:tag e :attrs ((key . \"value\")))
-- 'e#myid', which is equivalent to 'e[id~=myid]', corresponds to 
+- 'e#myid', which is equivalent to 'e[id~=myid]', corresponds to
   '(:tag e :attrs ((id . \"myid\"))).
 - 'e.class1.class2', which is equivalent to 'e[class~=class1][class~=class2]',
   corresponds to '(:tag e :attrs ((class . \"class1 class2\"))).
@@ -221,13 +225,12 @@ Combinator selectors (space, >, +, ~ combinators are supported):
 - 'e1 + e2' corresponds to '(+ e1 e2)
 - 'e1 ~ e2' corresponds to '(~ e1 e2)
 
-Besides, selectors are composable, e.g. 'ul > li#selected + li > a' corresponds 
-to 
+Besides, selectors are composable, e.g. 'ul > li#selected + li > a' corresponds
+to
    '((:tag ul)
     (> (:tag li :attrs ((id \"selected\"))))
     (+ (:tag li))
-    (> (:tag a)))
-"
+    (> (:tag a)))"
   (cl-loop with combinator-selectors = (cdr selector)
 	   with base-selector = (car selector)
 	   with nodes = (org-dict--dom-simple-select dom base-selector)
@@ -244,9 +247,8 @@ to
   "Given a DOM, do node transformation following the RULES.
 
 Each rule of RULES is a list (<selector> <transformer>) where <selector> selects
-a node to work on and <transformer> transforms that node to a new one. Finally,
-the selected nodes are replaced by the new nodes in the DOM.
-"
+a node to work on and <transformer> transforms that node to a new one.  Finally,
+the selected nodes are replaced by the new nodes in the DOM."
   (cl-loop for rule in rules
 	   for selector = (car rule)
 	   for transformer = (cadr rule)
