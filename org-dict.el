@@ -25,8 +25,10 @@
 
 ;;; Commentary:
 
-;; Org-dict is a dictionary utility which uses the power of Org-mode to increase
-;; readability and to provide reusability.
+;; Org-dict is endowed with the power of Org-mode to bring the dictionary
+;; experience to the next level.  It increases readability,
+;; reusability and the speed to consult online dictionaries.
+
 
 ;;; Code:
 

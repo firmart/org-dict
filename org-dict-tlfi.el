@@ -152,7 +152,6 @@ One word could have multiple entries (as noun, as adjective, etc.)"
   "Surround NODE's text content with CHAR."
   (let* ((content (caddr node))
 	 (replaced-content (replace-regexp-in-string "^\\([ ,.]+?\\)?\\(.*?\\)\\([ ,.]+\\)?$" (format "\\1​%s\\2%s​\\3" char char) content)))
-    ;;(message "node:%s, class:%s, content:'%s', replaced-content:'%s'" (car node) (org-dict--dom-node-class node) content replaced-content)
     (org-dict--dom-replace-node dom node replaced-content)))
 
 (defun org-dict-tlfi--replace-markup (dom)
@@ -177,17 +176,17 @@ One word could have multiple entries (as noun, as adjective, etc.)"
 	   (org-dict-tlfi--node-replace-with-surround dom node "/"))
 	  target-italic-nodes)))
 
-(defvar org-dict-tlfi--cplan-regexps '("^\\([0-9]+?.*Section\\)\\.$"
-					"^\\([I]\\{1,3\\}\\|[I]?V\\|V[I]\\{1,3\\}\\|[I]?X\\)\\.[ ]*?−$"
-					"^\\([A-H]\\)\\.[ ]*?−$"
-					"^\\([0-9]+?\\)\\.[ ]*?$"
-					"^\\([a-z]\\))$"
-					"\\([αβγδϵζηθικλ]\\))"))
+(defvar org-dict-tlfi--cplan-regexps '("^[ ]*?\\([0-9]+?.*Section\\)\\.[ ]*?$"
+					"^[ ]*?\\([I]\\{1,3\\}\\|[I]?V\\|V[I]\\{1,3\\}\\|[I]?X\\)\\.[ ]*?−?[ ]*?$"
+					"^[ ]*?\\([A-H]\\)\\.[ ]*?−[ ]*?$"
+					"^[ ]*?\\([0-9]+?\\)\\.[ ]*?$"
+					"^[ ]*?\\([a-z]\\))[ ]*?$"
+					"^[ ]*?\\([αβγδϵζηθικλ]\\))[ ]*?"))
 
 (defun org-dict-tlfi--parse-cplan-string (string)
   (cl-loop for regexp in org-dict-tlfi--cplan-regexps
 	   when (string-match regexp string) return (replace-regexp-in-string regexp "\\1" string)
-	   finally (error "Cannot parse tlf_cplan numbering: %s" string)))
+	   finally (error "Cannot parse tlf_cplan numbering: '%s'" string)))
 
 (defun org-dict-tlfi--parse-cplan-depth (string)
   "Parse TLFi numbering STRING. Return its associated depth."
@@ -195,7 +194,7 @@ One word could have multiple entries (as noun, as adjective, etc.)"
 	   for regexp in org-dict-tlfi--cplan-regexps
 	   when (string-match regexp string) return depth
 	   do (setq depth (1+ depth))
-	   finally (error "Cannot match tlf_cplan numbering: %s" string)))
+	   finally (error "Cannot match tlf_cplan numbering: '%s'" string)))
 
 (defun org-dict-tlfi--space-or-newline (node)
   "Depending NODE's class, return space or newline."
@@ -215,7 +214,8 @@ CURRENT-DEPTH and NUMBERING"
       ;; Org mode heading
       (format "%s (%s) %s\n" (make-string (- (+ current-depth org-dict-tlfi-heading-max-depth) root-depth) ?*) numbering title)
     ;; Org mode numbered list
-    (format "%s%s. %s " (make-string (* (- current-depth org-dict-tlfi-heading-max-depth) org-dict-indentation-width) ? ) numbering title))))
+    (format "%s%s. %s " (make-string (* (- current-depth (1+ org-dict-tlfi-heading-max-depth)) org-dict-indentation-width) ? ) numbering title)
+    )))
 
 ;; Source of sigles http://www.languefrancaise.net/forum/viewtopic.php?id=11703
 (defun org-dict-tlfi--parse-parah (parah-node &optional root-depth)
@@ -248,6 +248,7 @@ CURRENT-DEPTH and NUMBERING"
                 do (setq title-settled? t) and
                 collect (org-dict-tlfi--create-section-title title root-depth current-depth numbering-string)
             end and
+	    collect "\n" and
             collect (apply #'concat (flatten-tree (org-dict-tlfi--parse-parah node root-depth)))
        else
             if (not title-settled?)
@@ -262,7 +263,6 @@ CURRENT-DEPTH and NUMBERING"
                do (setq title-settled? t) and
                collect (org-dict-tlfi--create-section-title title root-depth current-depth numbering-string)
 	   end and
-	   ;;do (message "numbering-string:%s, node:'%s'" numbering-string (if (stringp node) node (car node))) and
 	   collect "\n"
        end)))
 
@@ -275,29 +275,20 @@ CURRENT-DEPTH and NUMBERING"
   ;; (org-dict-tlfi--remove-cdevette article-node)
   (org-dict-tlfi--replace-markup article-node)
   (org-dict-tlfi--remove-italic article-node)
+  ;; TODO Move this in parsing to indent correctly quote blocks
   (org-dict-tlfi--replace-exemples article-node)
   (org-dict-tlfi--replace-scripts article-node)
   ;; (org-dict-tlfi--replace-numbering article-node)
-  (apply #'concat
-	 (flatten-tree
-	  (cl-loop for node in nodes
-		   ;;with node-count = 0
-		   ;;do (setq node-count (1+ node-count))
+  (let ((result (cl-loop for node in nodes
 		   if (stringp node) do 'nothing
 		   else if (org-dict--dom-node-simple-selector-p '(:tag div :attrs ((class . "tlf_parah"))) node)
                        collect (org-dict-tlfi--parse-parah node)
                    else if (org-dict--dom-node-simple-selector-p '(:tag div :attrs ((class . "tlf_cvedette"))) node)
 		       do 'nothing
-		   ;;else if (org-dict--dom-node-simple-selector-p '(:tag span :attrs ((class . "tlf_ccrochet"))) node)
-		   ;;    collect (concat (apply #'concat (flatten-tree (dom-texts node ""))) "\n")
 		   else collect (concat (apply #'concat (flatten-tree (dom-texts node ""))) "\n\n")
 	           end
-		  ;; if (= total-nodes node-count)
-		  ;; do (message "node-count:%s, node:'%s', node-class:%s" node-count (if (stringp node) node (car node))
-		  ;;	       (when (not (stringp node)) (org-dict--dom-node-class node))) and
-		  ;;     collect "\n"
-		  ;; end
-		       )))))
+		       )))
+  (apply #'concat (flatten-tree result)))))
 
 (defun org-dict-tlfi--parse-entry (dom)
   "Parse a single word's entry whose the dom is DOM into an org buffer string."
@@ -306,11 +297,9 @@ CURRENT-DEPTH and NUMBERING"
       (org-mode)
       (org-insert-heading)
       (insert entry-name "\n")
-      (insert
-       (org-dict--remove-redundant-spaces
-	(org-dict-tlfi--parse-entry-content dom)))
+      (insert (org-dict-tlfi--parse-entry-content dom))
       (insert "\n")
-      ;; TODO add etymology
+      ;; TODO parse correctly addendum (etymology etc.)
       (org-dict--fill-region)
       (buffer-substring (point-min) (point-max)))))
 
@@ -318,7 +307,7 @@ CURRENT-DEPTH and NUMBERING"
 (defun org-dict-tlfi-parse (dom url)
   "Parse a DOM coming from TLFI and outputs the result in Org mode.
 
-If a word has multiple entries, they will be all parsed."
+If a word has multiple entries, all of them will be parsed."
   (let ((dom-list (org-dict-tlfi--dom-list dom url)))
     (mapcar #'org-dict-tlfi--parse-entry dom-list)))
 

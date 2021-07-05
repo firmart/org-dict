@@ -41,9 +41,7 @@
 ;;;; Utilities
 (defun org-dict--fill-region ()
  (mark-whole-buffer)
- (org-fill-paragraph nil (list (point-min) (point-max)))
-  ;; (org-element-map (org-element-parse-buffer) org-element-all-elements #'org-fill-element)
-  )
+ (org-fill-paragraph nil (list (point-min) (point-max))))
 
 (defun org-dict--remove-redundant-spaces (str)
   "Remove redundant spaces which are ignored by HTML or LaTeX rendering."
@@ -95,7 +93,6 @@ Before using this function, make sure that:
  	(cl-subsetp classes node-classes :test #'string=)
       (member classes node-classes))))
 
-;; TODO
 (defun org-dict--dom-node-simple-selector-p (simple-selector node)
   "Return `t' whenever NODE matches a SIMPLE-SELECTOR query."
   (or (not simple-selector)
