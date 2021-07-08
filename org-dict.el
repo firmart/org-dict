@@ -34,7 +34,7 @@
 
 ;; Built-in Emacs lib
 (require 'org)
-(require 'ox-html)
+(require 'org-element)
 (require 'cl-lib)
 ;; Dictionary parse engines
 (require 'org-dict-core)
@@ -154,9 +154,11 @@ all results gathered from dictionaries of that language."
 					   when (eq dict (plist-get service :dict))
 					   return service))
 				dicts))
+	 ;; Put these under a local variables heading
 	 (org-use-sub-superscripts t)
 	 (org-cycle-global-status 'overview)
-	 (old-org-emphasis-regexp-components org-emphasis-regexp-components))
+	 (old-org-emphasis-regexp-components org-emphasis-regexp-components)
+	 (org-list-allow-alphabetical t))
 
     (when (get-buffer org-dict-buffer)
       (kill-buffer org-dict-buffer))
@@ -170,16 +172,19 @@ all results gathered from dictionaries of that language."
       ;; Allow markup to span over 10 lines
       (setcar (nthcdr 4 org-emphasis-regexp-components) 9)
       (org-set-emph-re 'org-emphasis-regexp-components org-emphasis-regexp-components)
-      (condition-case nil
+      (condition-case err
 	  (progn
 	    (mapc (lambda (service) (org-dict--parse word service))
 		  dict-services)
 	    (read-only-mode)
 	    (goto-char (point-min))
 	    (org-global-cycle)
+	    (org-element-map (org-element-parse-buffer 'element) 'quote-block
+	      (lambda (node) (goto-char (org-element-property :begin node)) (org-cycle))) 
 	    (org-set-emph-re 'org-emphasis-regexp-components old-org-emphasis-regexp-components)
 	    (pop-to-buffer org-dict-buffer))
-	(error (kill-buffer org-dict-buffer))))))
+	(error (kill-buffer org-dict-buffer)
+	       (error "%s" (error-message-string err)))))))
 
 (defun org-dict-at-point (&optional arg)
   "Search a word at point using Org-dict.
@@ -191,7 +196,11 @@ With a `\\[universal-argument] \\[universal-argument]' prefix argument ARG,
 prompt to choose a language and display in the buffer `org-dict-buffer'
 all results gathered from dictionaries of that language."
   (interactive)
-  (when-let* ((word-at-point (thing-at-point 'word))
+  (when-let* ((word-at-point (or (thing-at-point 'word)
+				 (when (use-region-p)
+				   (buffer-substring
+				    (region-beginning)
+				    (region-end)))))
 	      (word (substring-no-properties word-at-point)))
     (org-dict word)))
 

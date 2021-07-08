@@ -9,19 +9,31 @@
   - [X] Translate HTML basic markup (bold, italic) into Org mode markup.
   - [X] Translate superscript into Org mode superscript.
   - [ ] Handle small caps: put them in bold, and whenever they are in lowercase, uppercase the first letter.
-- [ ] Interlink (/e.g./ "v. dont 1reSection I B 4 a δ").
+- [ ] Interlink (/e.g./ "v. dont 1reSection I B 4 a δ", "... dont, v. ce mot <numbering>").
 - [X] Convert entries numbering (1reSection I A 1 a α) into Org heading and numbered list.
-- [ ] Align quotation block to numbered item (so that they can be foldable).
 - [ ] Option to enable abbreviation expansion.
 - [ ] LaTeX/PDF output.
-*** To fix [3/4]
+*** To fix [3/8]
 - [X] Remove numerotation of numbered examples.
 - [X] Period immediately followed by italic tag (sol. put a zero-width space before slash)
-- [ ] Replace in =<tlf_paraputir>= Unicode dash (−) to ASCII dash (-)
+- [-] Apply specific face on part of definitions. [1/4]
+  - [X] On the definition body.
+  - [ ] On the definition title.
+  - [ ] On "Syntagme paragraphe".
+  - [ ] Use different colors on antonym and synonym.
+- [ ] Indent bullet and diamond of =<tlf_paraputir>=
+  - [ ] Replace in =<tlf_paraputir>= Unicode dash (−) to ASCII dash (-) in order to
+    make real item.
+  - [ ] Replace in =<tlf_paraputir>= Unicode diamond to ASCII dash (-) in order to
+    make real item.
+- [ ] Align quotation block to numbered item (so that they can be foldable).
 - [X] Enable multi-line markup
+- [ ] Keep quote block numbering
+- [ ] Fix part-of-speech face 
 
-* Todo [0/4]
-- [ ] =org-dict= on region
+* Todo [1/6]
+- [X] =org-dict= on region
 - [ ] Integration with =pdfview=
 - [ ] Integration with =guess-language= (initial input of =C-u C-u org-dict=)
 - [ ] Dictionaries whitelist/blacklist
+- [ ] Fix/test faces for light themes

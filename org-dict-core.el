@@ -36,19 +36,85 @@
   :group 'org-dict
   :package-version '(org-dict . "0.1"))
 
+;;;; Faces
+(defface org-dict-use-face
+  '((t (:inherit font-lock-comment-face :foreground "LightSkyBlue")))
+  "Face for the use of a word (e.g. archaic, literary, etc.)"
+  :group 'org-dict
+  :package-version '(org-dict . "0.1"))
+
+(defface org-dict-syntagma-face
+  '((t (:inherit font-lock-comment-face :foreground "yellow")))
+  "Face for syntagma of a definition."
+  :group 'org-dict
+  :package-version '(org-dict . "0.1"))
+
+(defface org-dict-synonym-face
+  '((t (:inherit font-lock-comment-face :foreground "MediumPurple")))
+  "Face for synonyms or antonyms."
+  :group 'org-dict
+  :package-version '(org-dict . "0.1"))
+
+(defface org-dict-pos-face
+'((t (:weight bold :box 1 :foreground "#61afef" :background "#38394c" :inherit org-level-1)))
+  "Face for part of speech."
+  :group 'org-dict
+  :package-version '(org-dict . "0.1"))
+
+(defface org-dict-example-face
+  '((t (:inherit font-lock-comment-face :foreground "aquamarine")))
+  "Face for examples of the definition."
+  :group 'org-dict
+  :package-version '(org-dict . "0.1"))
+
+(defface org-dict-domain-face
+  '((t (:inherit org-special-keyword)))
+  "Face for the domain of study of the definition."
+  :group 'org-dict
+  :package-version '(org-dict . "0.1"))
+
+(defface org-dict-comment-face
+  '((t (:inherit font-lock-comment-face)))
+  "Face for comments, annotations, notes."
+  :group 'org-dict
+  :package-version '(org-dict . "0.1"))
+
 ;;; Internal variables
 ;;; Internal functions
 ;;;; Utilities
 (defun org-dict--org-fill-whole-buffer ()
   "Fill the whole Org buffer."
- (mark-whole-buffer)
- (org-fill-paragraph nil (list (point-min) (point-max))))
+  (interactive)
+  (save-excursion
+    (org-element-map (org-element-parse-buffer 'element)
+	'(quote-block paragraph item plain-list)
+      (lambda (elt)
+	(goto-char (org-element-property :contents-begin elt))
+	(org-fill-paragraph)))))
 
 (defun org-dict--remove-redundant-spaces (str)
   "Remove redundant spaces in STR which are ignored by HTML or LaTeX rendering."
   (string-trim
    (replace-regexp-in-string
     "\\( \\)+" " " str)))
+
+(defun org-dict--insert-string-with-properties (str)
+  "Insert STR with its text properties (even with font-lock-mode enabled).
+
+Required Emacs >= 28 due to the use of `object-intervals'."
+  (if (and (>= emacs-major-version 28)
+	   font-lock-mode)
+      (mapc (lambda (text-prop)
+	      (let ((beg (car text-prop))
+		    (end (cadr text-prop))
+		    (props (caddr text-prop)))
+		(cl-loop while props
+			 for prop = (pop props)
+			 for value = (pop props)
+			 when (eq prop 'face)
+			   do (put-text-property beg end 'font-lock-face value str))))
+	    (object-intervals str)))
+  (insert str))
 
 ;;;; DOM related
 (defun org-dict--url-to-dom (url)

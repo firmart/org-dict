@@ -61,15 +61,21 @@ One word could have multiple entries (as noun, as adjective, etc.)"
 
 (defun org-dict-tlfi--current-entry-name (dom)
   "From a word's DOM, return the current entry title."
-  ;; #vitemselected a
-  (let* ((title-selector '((:attrs ((id . "vitemselected")))
-			   (=> (:tag a))))
+  ;; #lexicontent span.tlf_cmot
+  (let* ((title-selector '((:attrs ((id . "lexicontent")))
+			   (=> (:tag div :attrs ((class . "tlf_cvedette"))))))
 	 (title-node (car (org-dict--dom-select dom title-selector)))
-	 (superscript-node (car (org-dict--dom-select title-node '((:tag sup)))))
-	 (superscript (caddr superscript-node)))
-    (when superscript
-	(org-dict--dom-replace-node title-node superscript-node (concat " (" superscript ")")))
-    (dom-texts title-node "")))
+	 (word-node (car (org-dict--dom-select title-node '((:tag span :attrs ((class . "tlf_cmot")))))))
+	 (word (caddr word-node))
+	 (superscript-node (car (org-dict--dom-select word-node '((:tag sup)))))
+	 (superscript (caddr superscript-node))
+	 (pos-node (car (org-dict--dom-select title-node '((:tag span :attrs ((class . "tlf_ccode")))))))
+	 (part-of-speech (propertize (caddr pos-node) 'font-lock-face 'org-dict-pos-face)))
+
+    (concat word
+	    (when superscript
+	      (concat " (" superscript ") "))
+	    part-of-speech)))
 
 (defun org-dict-tlfi--dom-list (dom url)
   "Given the word's URL and its DOM, return the DOM of all entries."
@@ -87,8 +93,9 @@ One word could have multiple entries (as noun, as adjective, etc.)"
   (let ((cexemple-nodes (org-dict--dom-select dom '((:tag span :attrs ((class . "tlf_cexemple")))))))
     (mapc (lambda (node)
 	    (let* ((content (dom-texts node ""))
-		   (unumbered-content (replace-regexp-in-string "^[0-9]+\\. \\(.*\\)" "\\1" content)))
-	      (org-dict--dom-replace-node dom node (concat "\n\n#+BEGIN_QUOTE\n" unumbered-content "\n#+END_QUOTE\n\n"))))
+		   (unumbered-content (replace-regexp-in-string "^[0-9]+\\. \\(.*\\)" "\\1" content))
+		   (target-content (replace-regexp-in-string "− \\(.*\\)" "\\1" unumbered-content)))
+	      (org-dict--dom-replace-node dom node (concat "\n#+BEGIN_QUOTE\n" (propertize target-content 'font-lock-face 'org-dict-example-face) "\n#+END_QUOTE\n"))))
 	  cexemple-nodes)))
 
 (defun org-dict-tlfi--remove-italic (dom)
@@ -163,7 +170,7 @@ One word could have multiple entries (as noun, as adjective, etc.)"
 (defvar org-dict-tlfi--cplan-regexps '("^[ ]*?\\([0-9]+?.*Section\\)\\.[ ]*?$"
 					"^[ ]*?\\([I]\\{1,3\\}\\|[I]?V\\|V[I]\\{1,3\\}\\|[I]?X\\)\\.[ ]*?−?[ ]*?$"
 					"^[ ]*?\\([A-H]\\)\\.[ ]*?−[ ]*?$"
-					"^[ ]*?\\([0-9]+?\\)\\.[ ]*?$"
+					"^[ ]*?\\([0-9]+?\\)\\.[ ]*?−?$"
 					"^[ ]*?\\([a-z]\\))[ ]*?$"
 					"^[ ]*?\\([αβγδϵζηθικλ]\\))[ ]*?"))
 
@@ -181,6 +188,12 @@ One word could have multiple entries (as noun, as adjective, etc.)"
 	   do (setq depth (1+ depth))
 	   finally (error "Cannot match tlf_cplan numbering: '%s'" string)))
 
+(defun org-dict-tlfi--emploi-crochet-domaine-p (node) 
+  "Return non-nil when NODE's class is tlf_c{emploi, crochet, domaine}."
+  (or (org-dict--dom-node-simple-selector-p '(:tag span :attrs ((class . "tlf_cemploi"))) node)
+      (org-dict--dom-node-simple-selector-p '(:tag span :attrs ((class . "tlf_ccrochet"))) node)
+      (org-dict--dom-node-simple-selector-p '(:tag span :attrs ((class . "tlf_cdomaine"))) node)))
+
 (defun org-dict-tlfi--space-or-newline (node)
   "Depending NODE's class, return space or newline."
   (if (or (org-dict--dom-node-simple-selector-p '(:tag span :attrs ((class . "tlf_csyntagme"))) node)
@@ -196,11 +209,43 @@ Based on TITLE, ROOT-DEPTH (the depth of the first node visited),
 CURRENT-DEPTH and NUMBERING"
   (let ((title (if (not title) "" title)))
   (if (<= current-depth org-dict-tlfi-heading-max-depth)
-      ;; Org mode heading
+      ;; Org mode heading. Keep TLFi numbering for reference purpose.
       (format "%s (%s) %s\n" (make-string (- (+ current-depth org-dict-tlfi-heading-max-depth) root-depth) ?*) numbering title)
     ;; Org mode numbered list
-    (format "%s%s. %s " (make-string (* (- current-depth (1+ org-dict-tlfi-heading-max-depth)) org-dict-indentation-width) ? ) numbering title)
-    )))
+    (format "%s%s. %s " (make-string (* (- current-depth (1+ org-dict-tlfi-heading-max-depth)) org-dict-indentation-width) ? ) numbering title))))
+
+(defun org-dict-tlfi--parse-cemploi (cemploi-node)
+  (propertize (dom-texts cemploi-node "") 'font-lock-face 'org-dict-use-face))
+
+(defun org-dict-tlfi--parse-ccrochet (ccrochet-node)
+  (propertize (dom-texts ccrochet-node "") 'font-lock-face 'org-dict-comment-face))
+  
+(defun org-dict-tlfi--parse-cdomaine (cdomaine-node)
+  (propertize (dom-texts cdomaine-node "") 'font-lock-face 'org-dict-domain-face))
+
+(defun org-dict-tlfi--parse-csyntagme (csyntagme-node)
+  (propertize (dom-texts csyntagme-node "") 'font-lock-face 'org-dict-syntagma-face))
+
+(defun org-dict-tlfi--parse-csynonime (csynonime-node)
+  "Parse node of class 'csynonime'."
+  (propertize (dom-texts csynonime-node "") 'font-lock-face 'org-dict-synonym-face))
+
+(defun org-dict-tlfi--parse-paraputir (paraputir-node)
+  (let ((children (dom-children paraputir-node)))
+    (cl-loop for node in children 
+	     collect (cond  
+		      ((stringp node) node)
+		      ((org-dict--dom-node-simple-selector-p '(:tag span :attrs ((class . "tlf_cemploi"))) node)
+		       (org-dict-tlfi--parse-cemploi node))
+		      ((org-dict--dom-node-simple-selector-p '(:tag span :attrs ((class . "tlf_ccrochet"))) node)
+		       (org-dict-tlfi--parse-ccrochet node))
+		      ((org-dict--dom-node-simple-selector-p '(:tag span :attrs ((class . "tlf_csynonime"))) node)
+		       (org-dict-tlfi--parse-csynonime node))
+		      ((org-dict--dom-node-simple-selector-p '(:tag span :attrs ((class . "tlf_csyntagme"))) node)
+		       (org-dict-tlfi--parse-csyntagme node))
+		      ((org-dict--dom-node-simple-selector-p '(:tag span :attrs ((class . "tlf_cdomaine"))) node)
+		       (org-dict-tlfi--parse-cdomaine node))
+		      (t (dom-texts node ""))))))
 
 ;; Source of sigles http://www.languefrancaise.net/forum/viewtopic.php?id=11703
 (defun org-dict-tlfi--parse-parah (parah-node &optional root-depth)
@@ -223,12 +268,18 @@ ROOT-DEPTH is used to correctly determine the Org heading and numbered list dept
             do (setq current-depth (org-dict-tlfi--parse-cplan-depth (dom-texts node ""))) and
             do (setq numbering-string (org-dict-tlfi--parse-cplan-string (dom-texts node ""))) and
             when (not root-depth) do (setq root-depth current-depth) end
-       else if (or (org-dict--dom-node-simple-selector-p '(:tag span :attrs ((class . "tlf_cemploi"))) node)
-                   (org-dict--dom-node-simple-selector-p '(:tag span :attrs ((class . "tlf_ccrochet"))) node)
-                   (org-dict--dom-node-simple-selector-p '(:tag span :attrs ((class . "tlf_cdomaine"))) node))
+	    ;; Potential HTML nodes used to make an Org heading
+       else if (org-dict--dom-node-simple-selector-p '(:tag div :attrs ((class . "tlf_paraputir"))) node)
+                collect (org-dict-tlfi--parse-paraputir node)
+       else if (org-dict-tlfi--emploi-crochet-domaine-p node)
             if (not title-settled?)
                 do (setq title (concat title " " (dom-texts node "")))
-            else collect (concat (apply #'concat (flatten-tree (dom-texts node ""))) " ")
+            else if (org-dict--dom-node-simple-selector-p '(:tag span :attrs ((class . "tlf_cemploi"))) node)
+		collect (org-dict-tlfi--parse-cemploi node)
+            else if (org-dict--dom-node-simple-selector-p '(:tag span :attrs ((class . "tlf_ccrochet"))) node)
+                collect (concat (org-dict-tlfi--parse-ccrochet node) "\n")
+            else if (org-dict--dom-node-simple-selector-p '(:tag span :attrs ((class . "tlf_cdomaine"))) node)
+		collect (org-dict-tlfi--parse-cdomaine node)
             end
        else if (org-dict--dom-node-simple-selector-p '(:tag div :attrs ((class . "tlf_parah"))) node)
             if (not title-settled?)
@@ -267,17 +318,25 @@ ROOT-DEPTH is used to correctly determine the Org heading and numbered list dept
   (org-dict-tlfi--replace-scripts article-node)
   (let ((result (cl-loop for node in nodes
 		   if (stringp node) do 'nothing
+                   else if (org-dict--dom-node-simple-selector-p '(:tag span :attrs ((class . "tlf_cemploi"))) node)
+                       collect (concat (org-dict-tlfi--parse-cemploi node) "\n")
+                   else if (org-dict--dom-node-simple-selector-p '(:tag span :attrs ((class . "tlf_ccrochet"))) node)
+                       collect (concat (org-dict-tlfi--parse-ccrochet node) "\n")
+                   else if (org-dict--dom-node-simple-selector-p '(:tag span :attrs ((class . "tlf_paraputir"))) node)
+                       collect (org-dict-tlfi--parse-paraputir node)
+                   else if (org-dict--dom-node-simple-selector-p '(:tag span :attrs ((class . "tlf_cdomaine"))) node)
+                       collect (concat (org-dict-tlfi--parse-cdomaine node) "\n")
 		   else if (org-dict--dom-node-simple-selector-p '(:tag div :attrs ((class . "tlf_parah"))) node)
                        collect (org-dict-tlfi--parse-parah node)
                    else if (org-dict--dom-node-simple-selector-p '(:tag div :attrs ((class . "tlf_cvedette"))) node)
 		       do 'nothing
-		   else collect (concat (apply #'concat (flatten-tree (dom-texts node ""))) "\n\n")
+		   else collect (concat (dom-texts node "") "\n\n")
 	           end)))
   (apply #'concat (flatten-tree result)))))
 
 (defun org-dict-tlfi--parse-entry (dom)
   "Parse a single word's entry whose the dom is DOM into an org buffer string."
-  (let ((entry-name (org-dict-tlfi--current-entry-name dom)))
+  (let ((entry-name (downcase (org-dict-tlfi--current-entry-name dom))))
     (with-temp-buffer
       (org-mode)
       (org-insert-heading)
@@ -285,7 +344,6 @@ ROOT-DEPTH is used to correctly determine the Org heading and numbered list dept
       (insert (org-dict-tlfi--parse-entry-content dom))
       (insert "\n")
       ;; TODO parse correctly addendum (etymology etc.)
-      (org-dict--fill-region)
       (org-dict--org-fill-whole-buffer)
       (buffer-substring (point-min) (point-max)))))
 
