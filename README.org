@@ -35,6 +35,9 @@
 - [ ] Keep quote block numbering
 - [ ] Fix part-of-speech face
 - [ ] Fix title length: when it exceeds a threshold, put the content in the body.
+*** Test sample
+- [ ] =tlf_ccrochet= and =tlf_cdefinition= inside a =tlf_cexemple=. See e.g. /prognathe/.
+- [ ] Fix superscript along with bold/italic markup. See e.g. /ouvrir/
 
 * Todo [1/6]
 - [X] =org-dict= on region

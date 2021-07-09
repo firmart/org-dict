@@ -89,8 +89,9 @@
     (org-element-map (org-element-parse-buffer 'element)
 	'(quote-block paragraph item plain-list)
       (lambda (elt)
-	(goto-char (org-element-property :contents-begin elt))
-	(org-fill-paragraph)))))
+	(when-let* ((target-point (org-element-property :contents-begin elt)))
+	  (goto-char target-point)
+	  (org-fill-paragraph))))))
 
 (defun org-dict--remove-redundant-spaces (str)
   "Remove redundant spaces in STR which are ignored by HTML or LaTeX rendering."
