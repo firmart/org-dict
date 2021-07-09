@@ -237,7 +237,7 @@ CURRENT-DEPTH and NUMBERING"
 		    collect (cond
 			     ((stringp node) (org-dict-tlfi--parse-string node))
 			     ((org-dict--dom-node-simple-selector-p '(:tag span :attrs ((class . "tlf_cemploi"))) node)
-			      (org-dict-tlfi--parse-cemploi node))
+			      (concat (org-dict-tlfi--parse-cemploi node) "\n"))
 			     ((org-dict--dom-node-simple-selector-p '(:tag span :attrs ((class . "tlf_ccrochet"))) node)
 			      (concat (org-dict-tlfi--parse-ccrochet node) " "))
 			     ((org-dict--dom-node-simple-selector-p '(:tag span :attrs ((class . "tlf_csynonime"))) node)
@@ -246,6 +246,8 @@ CURRENT-DEPTH and NUMBERING"
 			      (org-dict-tlfi--parse-csyntagme node))
 			     ((org-dict--dom-node-simple-selector-p '(:tag span :attrs ((class . "tlf_cdomaine"))) node)
 			      (org-dict-tlfi--parse-cdomaine node))
+                             ((org-dict--dom-node-simple-selector-p '(:tag div :attrs ((class . "tlf_parah"))) node)
+                              (org-dict-tlfi--parse-parah node))
 			     (t (dom-texts node "")))))))
 
 (defun org-dict-tlfi--parse-string (str)
@@ -279,7 +281,7 @@ ROOT-DEPTH is used to correctly determine the Org heading and numbered list dept
                 do (setq title-settled? t) and
                 collect (org-dict-tlfi--create-section-title title root-depth current-depth numbering-string)
             end and
-	    collect "\n" and
+	    collect "\n\n" and
             collect (concat (org-dict-tlfi--parse-paraputir node) " ")
        else if (org-dict-tlfi--emploi-crochet-domaine-p node)
             if (not title-settled?)
