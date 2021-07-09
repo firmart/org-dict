@@ -197,11 +197,11 @@ With a `\\[universal-argument] \\[universal-argument]' prefix argument ARG,
 prompt to choose a language and display in the buffer `org-dict-buffer'
 all results gathered from dictionaries of that language."
   (interactive)
-  (when-let* ((word-at-point (or (thing-at-point 'word)
-				 (when (use-region-p)
+  (when-let* ((word-at-point (or (when (use-region-p)
 				   (buffer-substring
 				    (region-beginning)
-				    (region-end)))))
+				    (region-end)))
+				 (thing-at-point 'word)))
 	      (word (substring-no-properties word-at-point)))
     (org-dict word)))
 
