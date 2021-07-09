@@ -241,6 +241,16 @@ CURRENT-DEPTH and NUMBERING"
                               (org-dict-tlfi--parse-cexemple node))
 			     (t (dom-texts node "")))))))
 
+(defun org-dict-tlfi--parse-tabulation (tabulation-node)
+  (let ((children (dom-children tabulation-node)))
+    (apply #'concat
+	   (cl-loop for node in children
+		    collect (cond
+			     ((stringp node) (org-dict-tlfi--parse-string node))
+		             ((org-dict--dom-node-simple-selector-p '(:tag span :attrs ((class . "tlf_cexemple"))) node)
+                              (org-dict-tlfi--parse-cexemple node))
+			     (t (dom-texts node "")))))))
+
 (defun org-dict-tlfi--parse-string (str)
   "Parse a STR node."
   (replace-regexp-in-string "^[ ]*$" "" str))
@@ -249,7 +259,7 @@ CURRENT-DEPTH and NUMBERING"
 ;; TODO take account of depth
 (defun org-dict-tlfi--parse-cexemple (node)
   (let* ((content (dom-texts node ""))
-	 (unumbered-content (replace-regexp-in-string "^[0-9]+\\. \\(.*\\)" "\\1" content))
+	 (unumbered-content (replace-regexp-in-string "^[0-9]+\\.[ ]*\\(.*\\)" "\\1" content))
 	 (target-content (replace-regexp-in-string "− \\(.*\\)" "\\1" unumbered-content)))
     (concat "\n#+BEGIN_QUOTE\n"
 	    (propertize target-content 'font-lock-face 'org-dict-example-face)
@@ -284,6 +294,13 @@ ROOT-DEPTH is used to correctly determine the Org heading and numbered list dept
             end and
 	    collect "\n" and
             collect (org-dict-tlfi--parse-cexemple node)
+       else if (org-dict--dom-node-simple-selector-p '(:tag div :attrs ((class . "tlf_tabulation"))) node)
+            if (not title-settled?)
+                do (setq title-settled? t) and
+                collect (org-dict-tlfi--create-section-title title root-depth current-depth numbering-string)
+            end and
+	    collect "\n" and
+            collect (org-dict-tlfi--parse-tabulation node)
        else if (org-dict--dom-node-simple-selector-p '(:tag div :attrs ((class . "tlf_paraputir"))) node)
             if (not title-settled?)
                 do (setq title-settled? t) and
@@ -346,7 +363,9 @@ ROOT-DEPTH is used to correctly determine the Org heading and numbered list dept
                        collect (concat (org-dict-tlfi--parse-cdomaine node) "\n")
 		   else if (org-dict--dom-node-simple-selector-p '(:tag div :attrs ((class . "tlf_parah"))) node)
                        collect (org-dict-tlfi--parse-parah node)
-		   else if (org-dict--dom-node-simple-selector-p '(:tag span :attrs ((class . "tlf_cexemple"))) node)
+                   else if (org-dict--dom-node-simple-selector-p '(:tag div :attrs ((class . "tlf_tabulation"))) node)
+                       collect (org-dict-tlfi--parse-tabulation node)
+                   else if (org-dict--dom-node-simple-selector-p '(:tag span :attrs ((class . "tlf_cexemple"))) node)
                        collect (org-dict-tlfi--parse-cexemple node)
                    else if (org-dict--dom-node-simple-selector-p '(:tag div :attrs ((class . "tlf_cvedette"))) node)
 		       do 'nothing

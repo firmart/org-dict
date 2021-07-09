@@ -3,14 +3,17 @@
 
 * Dictionaries
 ** TLFi
-*** Features [2/7]
+*** Features [2/6]
 - [X] Put example into Org quote block.
 - [-] Markup
   - [X] Translate HTML basic markup (bold, italic) into Org mode markup.
   - [X] Translate superscript into Org mode superscript.
   - [ ] Handle small caps: put them in bold, and whenever they are in lowercase, uppercase the first letter.
-- [ ] Interlink (/e.g./ "v. /dont/ 1reSection I B 4 a δ", "... /dont/, v. ce mot
-  <numbering>" or "Corresp. à ​/pince/​ I B 2 b α chez le cheval" in a title).
+- [ ] Interlink
+  - [ ] "v. /dont/ 1reSection I B 4 a δ"
+  - [ ] "... /dont/, v. ce mot <numbering>"
+  - [ ] "Corresp. à ​/pince/​ I B 2 b α chez le cheval"
+  - [ ] exemple 8 (use <<anchor>>)
 - [X] Convert entries numbering (1reSection I A 1 a α) into Org heading and numbered list.
 - [ ] Option to enable abbreviation expansion.
 - [ ] LaTeX/PDF output.
