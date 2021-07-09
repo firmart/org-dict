@@ -177,12 +177,13 @@ all results gathered from dictionaries of that language."
 	    (mapc (lambda (service) (org-dict--parse word service))
 		  dict-services)
 	    (read-only-mode)
-	    (goto-char (point-min))
 	    (org-global-cycle)
 	    (org-element-map (org-element-parse-buffer 'element) 'quote-block
 	      (lambda (node) (goto-char (org-element-property :begin node)) (org-cycle))) 
 	    (org-set-emph-re 'org-emphasis-regexp-components old-org-emphasis-regexp-components)
-	    (pop-to-buffer org-dict-buffer))
+	    (pop-to-buffer org-dict-buffer)
+	    (goto-char (point-min))
+	    (org-cycle))
 	(error (kill-buffer org-dict-buffer)
 	       (error "%s" (error-message-string err)))))))
 
