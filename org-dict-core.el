@@ -37,6 +37,12 @@
   :package-version '(org-dict . "0.1"))
 
 ;;;; Faces
+(defface org-dict-definition-face
+  '((t (:inherit font-lock-string-face :foreground "NavajoWhite")))
+  "Face for the definition of a word."
+  :group 'org-dict
+  :package-version '(org-dict . "0.1"))
+
 (defface org-dict-use-face
   '((t (:inherit font-lock-comment-face :foreground "LightSkyBlue")))
   "Face for the use of a word (e.g. archaic, literary, etc.)"
@@ -79,7 +85,6 @@
   :group 'org-dict
   :package-version '(org-dict . "0.1"))
 
-;;; Internal variables
 ;;; Internal functions
 ;;;; Utilities
 (defun org-dict--org-fill-whole-buffer ()
@@ -156,7 +161,7 @@ DOM is an HTML DOM."
 
 (defun org-dict--dom-node-class-p (classes node)
   "Return t whenever NODE has CLASSES as classes.
- 
+
  CLASSES can be given as a list of string for multiple classes or
  as a string for a single class."
   (let ((node-classes (org-dict--dom-node-class node)))
@@ -205,7 +210,7 @@ Specifically,
 - if DOM-OR-NODES is a nodes list (say result from a selector s1), then the
   result corresponds to 's1 SELECTOR' (namely the result of the descendant
   combinator of s1 and SELECTOR)."
-  
+
    ;; If there is only a single node, wrap it in a list.
 
 (cl-remove-duplicates

@@ -14,17 +14,21 @@
   - [ ] "... /dont/, v. ce mot <numbering>"
   - [ ] "Corresp. à ​/pince/​ I B 2 b α chez le cheval"
   - [ ] exemple 8 (use <<anchor>>)
+  - [ ] sens [II B] (link to current buffer)
+  - [ ] cf. arrière-ban ex. 1 (see /ban/)
+  - [ ] Cf. abaisser, hist. II A 1 b.
+  - [ ] V. ​/fioritureur/​ ex. de E. de Goncourt.
 - [X] Convert entries numbering (1reSection I A 1 a α) into Org heading and numbered list.
 - [ ] Option to enable abbreviation expansion.
 - [ ] LaTeX/PDF output.
-*** To fix [3/9]
+*** To fix [3/10]
 - [X] Remove numerotation of numbered examples.
 - [X] Period immediately followed by italic tag (sol. put a zero-width space before slash)
-- [-] Apply specific face on part of definitions. [1/4]
+- [-] Apply specific face on part of definitions. [2/4]
   - [X] On the definition body.
   - [ ] On the definition title.
-  - [ ] On "Syntagme paragraphe".
-  - [ ] Use different colors on antonym and synonym.
+  - [X] On "Syntagme paragraphe".
+  - [ ] Use different colors on antonym and (quasi)-synonym.
 - [ ] Indent bullet and diamond of =<tlf_paraputir>=
   - [ ] Replace in =<tlf_paraputir>= Unicode dash (−) to ASCII dash (-) in order to
     make real item.
@@ -35,14 +39,27 @@
 - [ ] Keep quote block numbering
 - [ ] Fix part-of-speech face
 - [ ] Fix title length: when it exceeds a threshold, put the content in the body.
+- [ ] Parse =tlf_parothers= "*Prononc. et Orth.", "*Étymol. et Hist.",
+  "*Fréq. abs. littér.", "​*Fréq. rel. littér.", "*DÉR*.", "BBG.", "Rem." etc. See
+  /abaisser/ for a critical example.
 *** Test sample
 - [ ] =tlf_ccrochet= and =tlf_cdefinition= inside a =tlf_cexemple=. See e.g. /prognathe/.
-- [ ] Fix superscript along with bold/italic markup. See e.g. /ouvrir/
+- [ ] Fix superscript along with bold/italic markup. See e.g. /ouvrir/, /ban/
+- [ ] Parse =tlf_cconstruction=. See e.g. /deviner/
+- [ ] Parse suffix entry. See e.g. /parade/
 
-* Todo [1/6]
+* Todo [3/13]
 - [X] =org-dict= on region
 - [ ] Integration with =pdfview=
 - [ ] Integration with =guess-language= (initial input of =C-u C-u org-dict=)
 - [ ] Dictionaries whitelist/blacklist
+- [ ] Dictionaries by language: =from= / =to=
 - [ ] Fix/test faces for light themes
 - [ ] Fix "fill whole buffer"
+- [ ] Add an argument to parser: query to open the buffer in a specific position
+- [ ] Provide =hydra= menu
+  - [ ] Allow selecting interactively different dictionaries.
+- [ ] Previous entry
+- [ ] Navigation facilities
+- [X] URL/Services list (multiple dictionaries)
+- [X] Go to online dictionary URL (=completing-read= for multiple dictionaries)

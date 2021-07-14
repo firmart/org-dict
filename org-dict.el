@@ -105,19 +105,59 @@ See `\\[universal-argument] \\[universal-argument]' `org-dict-at-point'."
   :package-version '(org-dict . "0.1"))
 
 ;;; Internal variables
+(defvar org-dict--current-services)
+(defvar org-dict--current-word)
 ;;; Internal functions
+
+(defun org-dict--word-url (word service)
+  (format (plist-get service :url) (downcase word)))
+
+(defun org-dict--service-by-dict (name services)
+  (cl-loop for service in services
+	   when (eq name (plist-get service :dict))
+	   return service))
+
 (defun org-dict--parse (word service)
   "Parse query result of WORD from the dictionary SERVICE."
-  (let* ((url (format (plist-get service :url) (downcase word)))
+  (let* ((url (org-dict--word-url word service))
 	 (dom (org-dict--url-to-dom url))
 	 (parser (plist-get service :parser))
 	 (not-found-p (plist-get service :not-found-p)))
     (if (or (not dom)
-	    (funcall not-found-p dom))
+	    (and not-found-p (funcall not-found-p dom)))
 	(error "Cannot find definition of '%s' in %s" word (plist-get service :name))
       (mapc #'insert (funcall parser dom url)))))
 
 ;;; Interactive functions
+(defun org-dict-open-url ()
+  "Open in a browser one of the dictionaries being used."
+  (interactive)
+  (if (and (get-buffer org-dict-buffer)
+	   org-dict--current-word
+	   org-dict--current-services)
+      (browse-url
+       (if (= 1 (length org-dict--current-services))
+	   (org-dict--word-url org-dict--current-word (car org-dict--current-services))
+	 (org-dict--word-url org-dict--current-word
+			     (org-dict--service-by-dict
+			      (completing-read "Select dictionary to open: "
+					       (mapcar (lambda (s) (plist-get s :dict))
+						       org-dict--current-services))
+			      org-dict--current-services))))
+    (error "Org-dict is currently not in use")))
+
+(defun org-dict-open-all-url ()
+  "Open in a browser all dictionaries being used."
+  (interactive)
+  (if (and (get-buffer org-dict-buffer)
+	   org-dict--current-word
+	   org-dict--current-services)
+      (mapc (lambda (service)
+	      (browse-url
+	       (org-dict--word-url org-dict--current-word service)))
+	    org-dict--current-services)
+    (error "Org-dict is currently not in use")))
+
 ;; TODO: integration with pdf-view, guess-language
 (defun org-dict (word &optional dict-or-dicts arg)
   "Query the definition of WORD in DICT-OR-DICTS.
@@ -132,28 +172,29 @@ With a `\\[universal-argument] \\[universal-argument]' prefix argument ARG,
 it prompts to choose a language and display in the buffer `org-dict-buffer'
 all results gathered from dictionaries of that language."
   (interactive "MWord: \ni\nP")
-  (let* ((dicts (or (when dict-or-dicts
-		      (if (symbolp dict-or-dicts)
-			  (list dict-or-dicts)
-			dict-or-dicts))
-		    ;; Prompt a dictionary
-		    (when (equal arg '(4))
-		      (list (completing-read "Dictionary: "
-					     (mapcar (lambda (s) (plist-get s :symbol))
-						     org-dict-services))))
-		    ;; Prompt a language and return dictionaries of that language
-		    (when (equal arg '(16))
-		      (alist-get (intern (completing-read "Language: " org-dict-by-langs))
-				 org-dict-by-langs))
-		    ;; Default dictionary or dictionaries of default language
-		    (list org-dict-default-dictionary)
-		    (car (alist-get org-dict-default-lang org-dict-by-langs))
-		    (error "There is not available dictionary")))
-	 (dict-services (mapcar (lambda (dict)
-				  (cl-loop for service in org-dict-services
-					   when (eq dict (plist-get service :dict))
-					   return service))
-				dicts))
+  (let* ((dicts (cond (dict-or-dicts
+		       (if (symbolp dict-or-dicts)
+			   (list dict-or-dicts)
+			 dict-or-dicts))
+		      ;; Prompt a dictionary
+		      ((equal arg '(4))
+		       (list (completing-read "Dictionary: "
+					      (mapcar (lambda (s) (plist-get s :dict))
+						      org-dict-services))))
+		      ;; Prompt a language and return dictionaries of that language
+		      ((equal arg '(16))
+		       (alist-get (intern (completing-read "Language: " org-dict-by-langs))
+				  org-dict-by-langs))
+		      ;; Default dictionary or dictionaries of default language
+		      (org-dict-default-dictionary
+		       (list org-dict-default-dictionary))
+		      ((and org-dict-default-lang org-dict-by-langs)
+		       (car (alist-get org-dict-default-lang org-dict-by-langs)))
+		      (t (error "There is not available dictionary"))))
+	 (dict-services (mapcar
+			 (lambda (dict)
+			   (org-dict--service-by-dict dict org-dict-services))
+			 dicts))
 	 ;; Put these under a local variables heading
 	 (org-use-sub-superscripts t)
 	 (org-cycle-global-status 'overview)
@@ -176,6 +217,8 @@ all results gathered from dictionaries of that language."
 	  (progn
 	    (mapc (lambda (service) (org-dict--parse word service))
 		  dict-services)
+	    (setq org-dict--current-word word)
+	    (setq org-dict--current-services dict-services)
 	    (read-only-mode)
 	    (org-global-cycle)
 	    (org-element-map (org-element-parse-buffer 'element) 'quote-block
