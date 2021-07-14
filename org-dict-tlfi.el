@@ -217,45 +217,25 @@ CURRENT-DEPTH and NUMBERING"
   (propertize (dom-texts cdomaine-node "") 'font-lock-face 'org-dict-domain-face))
 
 (defun org-dict-tlfi--parse-csyntagme (csyntagme-node)
-  (propertize (dom-texts csyntagme-node "") 'font-lock-face 'org-dict-syntagma-face))
+  (let* ((str (dom-texts csyntagme-node ""))
+	 (text (org-dict-tlfi--parse-string str)))
+    (propertize text 'font-lock-face 'org-dict-syntagma-face)))
 
 (defun org-dict-tlfi--parse-cconstruction (cconstruction-node)
   (dom-texts cconstruction-node ""))
 
 ;; TODO propertize differently Synon. & Anton.
 (defun org-dict-tlfi--parse-csynonime (csynonime-node)
-  "Parse node of class 'csynonime'."
+  "Parse node of class 'tlf_csynonime'.
+
+The typo comes from TLFi HTML source code."
   (propertize (dom-texts csynonime-node "") 'font-lock-face 'org-dict-synonym-face))
 
 (defun org-dict-tlfi--parse-paraputir (paraputir-node)
   (let ((children (dom-children paraputir-node)))
     (apply #'concat
 	   (cl-loop for node in children
-		    collect (cond
-			     ((stringp node) (org-dict-tlfi--parse-string node))
-			     ((org-dict--dom-node-simple-selector-p '(:tag span :attrs ((class . "tlf_cemploi"))) node)
-			      (concat (org-dict-tlfi--parse-cemploi node) "\n"))
-			     ((org-dict--dom-node-simple-selector-p '(:tag span :attrs ((class . "tlf_ccrochet"))) node)
-			      (concat (org-dict-tlfi--parse-ccrochet node) " "))
-			     ((org-dict--dom-node-simple-selector-p '(:tag span :attrs ((class . "tlf_csynonime"))) node)
-			      (org-dict-tlfi--parse-csynonime node))
-			     ((org-dict--dom-node-simple-selector-p '(:tag span :attrs ((class . "tlf_cdefinition"))) node)
-			      (concat (org-dict-tlfi--parse-cdefinition node) " "))
-                             ((org-dict--dom-node-simple-selector-p '(:tag div :attrs ((class . "tlf_paraputir"))) node)
-                              (concat "\n\n" (org-dict-tlfi--parse-paraputir node) "\n"))
-			     ((org-dict--dom-node-simple-selector-p '(:tag span :attrs ((class . "tlf_csyntagme"))) node)
-			      (concat (org-dict-tlfi--parse-csyntagme node) "\n"))
-			     ((org-dict--dom-node-simple-selector-p '(:tag span :attrs ((class . "tlf_cdomaine"))) node)
-			      (org-dict-tlfi--parse-cdomaine node))
-                             ((org-dict--dom-node-simple-selector-p '(:tag div :attrs ((class . "tlf_parah"))) node)
-                              (org-dict-tlfi--parse-parah node))
-                             ((org-dict--dom-node-simple-selector-p '(:tag div :attrs ((class . "tlf_parsynt"))) node)
-                              (org-dict-tlfi--parse-parsynt node))
-			     ((org-dict--dom-node-simple-selector-p '(:tag div :attrs ((class . "tlf_tabulation"))) node)
-                              (org-dict-tlfi--parse-tabulation node))
-		             ((org-dict--dom-node-simple-selector-p '(:tag span :attrs ((class . "tlf_cexemple"))) node)
-                              (org-dict-tlfi--parse-cexemple node))
-			     (t (dom-texts node "")))))))
+		    collect (org-dict-tlfi--general-parse node t)))))
 
 (defun org-dict-tlfi--parse-tabulation (tabulation-node)
   (let ((children (dom-children tabulation-node)))
@@ -269,7 +249,8 @@ CURRENT-DEPTH and NUMBERING"
 
 (defun org-dict-tlfi--parse-string (str)
   "Parse a STR node."
-  (replace-regexp-in-string "^[ ]*$" "" str))
+  (if (string= " " str) ""
+  (replace-regexp-in-string "[[:space:]\n]+" " " str)))
 
 ;; TODO propertize author, bbg, date
 ;; TODO take account of depth
@@ -395,6 +376,37 @@ ROOT-DEPTH is used to correctly determine the Org heading and numbered list dept
                               (org-dict-tlfi--parse-csyntagme node))
 			     (t (dom-texts node "")))))))
 
+(defun org-dict-tlfi--general-parse (node &optional inline?)
+  "Parse a TLFi HTML NODE. Line breaks depend on INLINE?."
+  (cond ((stringp node) (org-dict-tlfi--parse-string node))
+	((org-dict--dom-node-simple-selector-p '(:tag span :attrs ((class . "tlf_cemploi"))) node)
+	 (concat (org-dict-tlfi--parse-cemploi node) "\n"))
+	((org-dict--dom-node-simple-selector-p '(:tag span :attrs ((class . "tlf_ccrochet"))) node)
+	 (concat (org-dict-tlfi--parse-ccrochet node) (if inline? " " "\n\n")))
+	((org-dict--dom-node-simple-selector-p '(:tag span :attrs ((class . "tlf_csynonime"))) node)
+	 (org-dict-tlfi--parse-csynonime node))
+	((org-dict--dom-node-simple-selector-p '(:tag span :attrs ((class . "tlf_cdefinition"))) node)
+	 (concat (org-dict-tlfi--parse-cdefinition node) (if inline? " " "\n")))
+	((org-dict--dom-node-simple-selector-p '(:tag div :attrs ((class . "tlf_paraputir"))) node)
+	 (concat "\n\n" (org-dict-tlfi--parse-paraputir node) "\n"))
+	((org-dict--dom-node-simple-selector-p '(:tag span :attrs ((class . "tlf_csyntagme"))) node)
+	 (concat (org-dict-tlfi--parse-csyntagme node) "\n"))
+	((org-dict--dom-node-simple-selector-p '(:tag span :attrs ((class . "tlf_cdomaine"))) node)
+	 (concat (org-dict-tlfi--parse-cdomaine node) (if inline? " " "\n")))
+	((org-dict--dom-node-simple-selector-p '(:tag div :attrs ((class . "tlf_parah"))) node)
+	 (org-dict-tlfi--parse-parah node))
+	((org-dict--dom-node-simple-selector-p '(:tag div :attrs ((class . "tlf_parsynt"))) node)
+	 (org-dict-tlfi--parse-parsynt node))
+	((org-dict--dom-node-simple-selector-p '(:tag div :attrs ((class . "tlf_tabulation"))) node)
+	 (org-dict-tlfi--parse-tabulation node))
+	((org-dict--dom-node-simple-selector-p '(:tag span :attrs ((class . "tlf_cexemple"))) node)
+	 (org-dict-tlfi--parse-cexemple node))
+	((org-dict--dom-node-simple-selector-p '(:tag div :attrs ((class . "tlf_cvedette"))) node)
+	 "")
+	((org-dict--dom-node-simple-selector-p '(:tag div :attrs ((class . "tlf_parothers"))) node)
+	 (concat (dom-texts node "") (if inline? "" "\n\n")))
+	(t (concat (dom-texts node "") (if inline? "" "\n\n")))))
+
 (defun org-dict-tlfi--parse-entry-content (dom)
   "Parse a single TLFi entry of DOM."
   (let* ((article-node (org-dict--dom-select dom ;; #lexicontent > .div
@@ -406,32 +418,8 @@ ROOT-DEPTH is used to correctly determine the Org heading and numbered list dept
   (org-dict-tlfi--remove-italic article-node)
   (org-dict-tlfi--replace-scripts article-node)
   (let ((result (cl-loop for node in nodes
-		   if (stringp node) do 'nothing
-                   else if (org-dict--dom-node-simple-selector-p '(:tag span :attrs ((class . "tlf_cemploi"))) node)
-                       collect (concat (org-dict-tlfi--parse-cemploi node) "\n")
-                   else if (org-dict--dom-node-simple-selector-p '(:tag span :attrs ((class . "tlf_ccrochet"))) node)
-                       collect (concat (org-dict-tlfi--parse-ccrochet node) "\n")
-                   else if (org-dict--dom-node-simple-selector-p '(:tag div :attrs ((class . "tlf_paraputir"))) node)
-                       collect (org-dict-tlfi--parse-paraputir node)
-                   else if (org-dict--dom-node-simple-selector-p '(:tag span :attrs ((class . "tlf_cdomaine"))) node)
-                       collect (concat (org-dict-tlfi--parse-cdomaine node) "\n")
-		   else if (org-dict--dom-node-simple-selector-p '(:tag span :attrs ((class . "tlf_csyntagme"))) node)
-		       collect (concat (org-dict-tlfi--parse-csyntagme node) "\n")
-                   else if (org-dict--dom-node-simple-selector-p '(:tag span :attrs ((class . "tlf_cdefinition"))) node)
-                       collect (concat (org-dict-tlfi--parse-cdefinition node) "\n")
-		   else if (org-dict--dom-node-simple-selector-p '(:tag div :attrs ((class . "tlf_parah"))) node)
-                       collect (org-dict-tlfi--parse-parah node)
-		   else if (org-dict--dom-node-simple-selector-p '(:tag div :attrs ((class . "tlf_parsynt"))) node)
-                       collect (org-dict-tlfi--parse-parsynt node)
-                   else if (org-dict--dom-node-simple-selector-p '(:tag div :attrs ((class . "tlf_tabulation"))) node)
-                       collect (org-dict-tlfi--parse-tabulation node)
-                   else if (org-dict--dom-node-simple-selector-p '(:tag span :attrs ((class . "tlf_cexemple"))) node)
-                       collect (org-dict-tlfi--parse-cexemple node)
-                   else if (org-dict--dom-node-simple-selector-p '(:tag div :attrs ((class . "tlf_cvedette"))) node)
-		       do 'nothing
-		   else collect (concat (dom-texts node "") "\n\n")
-	           end)))
-  (apply #'concat (flatten-tree result)))))
+		   collect (org-dict-tlfi--general-parse node))))
+  (apply #'concat result))))
 
 (defun org-dict-tlfi--parse-entry (dom)
   "Parse a single word's entry whose the dom is DOM into an org buffer string."
