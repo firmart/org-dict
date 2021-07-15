@@ -55,11 +55,7 @@
   :package-version '(org-dict . "0.1"))
 
 (defcustom org-dict-services
-  '((:dict tlfi
-	   :name "TLFi"
-	   :url "https://cnrtl.fr/definition/%s"
-	   :parser org-dict-tlfi-parse
-	   :not-found-p org-dict-tlfi-not-found-p))
+  `(,org-dict-tlfi-service)
   "List of dictionary's service available in Org-dict.
 
 Each service must contain the following key-values:
@@ -68,6 +64,8 @@ Each service must contain the following key-values:
 - `:url' : The query url where %s denotes the word to search.
 - `:parser' : The parser function of the dictionary which takes a DOM returned
 by `libxml-parse-html-region' and a URL.
+
+The following key-values are optional:
 - `:not-found-p' : A predicate that returns non-nil whenever the given DOM
 indicates a failed query.  It will be used to error out early in case the web
 page doesn't response with a 404 error when a word entry cannot be found."
@@ -116,17 +114,6 @@ See `\\[universal-argument] \\[universal-argument]' `org-dict-at-point'."
   (cl-loop for service in services
 	   when (eq name (plist-get service :dict))
 	   return service))
-
-(defun org-dict--parse (word service)
-  "Parse query result of WORD from the dictionary SERVICE."
-  (let* ((url (org-dict--word-url word service))
-	 (dom (org-dict--url-to-dom url))
-	 (parser (plist-get service :parser))
-	 (not-found-p (plist-get service :not-found-p)))
-    (if (or (not dom)
-	    (and not-found-p (funcall not-found-p dom)))
-	(error "Cannot find definition of '%s' in %s" word (plist-get service :name))
-      (mapc #'insert (funcall parser dom url)))))
 
 ;;; Interactive functions
 (defun org-dict-open-url ()
@@ -200,6 +187,9 @@ all results gathered from dictionaries of that language."
 	 (org-cycle-global-status 'overview)
 	 (old-org-emphasis-regexp-components org-emphasis-regexp-components)
 	 (org-list-allow-alphabetical t))
+
+    ;; Update Org element regex to honour single alphabetical bullet
+    (org-element-update-syntax)
 
     (when (get-buffer org-dict-buffer)
       (kill-buffer org-dict-buffer))

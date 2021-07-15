@@ -10,7 +10,7 @@
   - [X] Translate superscript into Org mode superscript.
   - [ ] Handle small caps: put them in bold, and whenever they are in lowercase, uppercase the first letter.
 - [ ] Interlink
-  - [ ] "v. /dont/ 1reSection I B 4 a δ"
+  - [ ] "v. /dont²/ 1reSection I B 4 a δ"
   - [ ] "... /dont/, v. ce mot <numbering>"
   - [ ] "Corresp. à ​/pince/​ I B 2 b α chez le cheval"
   - [ ] exemple 8 (use <<anchor>>)
@@ -18,6 +18,7 @@
   - [ ] cf. arrière-ban ex. 1 (see /ban/)
   - [ ] Cf. abaisser, hist. II A 1 b.
   - [ ] V. ​/fioritureur/​ ex. de E. de Goncourt.
+  - [ ] v. aussi ​/battre/ ¹​ I A 2
 - [X] Convert entries numbering (1reSection I A 1 a α) into Org heading and numbered list.
 - [ ] Option to enable abbreviation expansion.
 - [ ] LaTeX/PDF output.

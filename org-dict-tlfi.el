@@ -52,12 +52,30 @@ The least is the top level numbering:
 ;;; Internal variables
 (defvar org-dict-tlfi--surround-regexp "^[[:space:]\n]*\\(\\)\\(.*?\\)\\([,: ]*\\)?$")
 
-(defvar org-dict-tlfi--cplan-regexps '("^[ ]*?\\([0-9]+?.*Section\\)\\.[ ]*?$"
-					"^[ ]*?\\([I]\\{1,3\\}\\|[I]?V\\|V[I]\\{1,3\\}\\|[I]?X\\)\\.[ ]*?−?[ ]*?$"
-					"^[ ]*?\\([A-H]\\)\\.[ ]*?−?[ ]*?$"
-					"^[ ]*?\\([0-9]+?\\)\\.[ ]*?−?$"
-					"^[ ]*?\\([a-z]\\))[ ]*?$"
-					"^[[:space:]\n]*?\\([αβγδϵζηθικλ]\\))[ ]*?"))
+(defvar org-dict-tlfi--numbering-regexps '("\\([0-9]+?.*Section\\)"
+					"\\([I]\\{1,3\\}\\|[I]?V\\|V[I]\\{1,3\\}\\|[I]?X\\)"
+					"\\([A-H]\\)"
+					"\\([0-9]+?\\)"
+					"\\([a-z]\\)"
+					"\\([αβγδϵζηθικλ]\\)"))
+
+(defvar org-dict-tlfi--ref-regex (format "\\(%s?\\)" (string-join org-dict-tlfi--numbering-regexps "? ")))
+
+(defvar org-dict-tlfi--cplan-regexps (list
+				      (format "%s%s%s" "^[ ]*?" (nth 0 org-dict-tlfi--numbering-regexps) "\\.[ ]*?$")
+				      (format "%s%s%s" "^[ ]*?" (nth 1 org-dict-tlfi--numbering-regexps) "\\.[ ]*?−?[ ]*?$")
+				      (format "%s%s%s" "^[ ]*?" (nth 2 org-dict-tlfi--numbering-regexps) "\\.[ ]*?−?[ ]*?$")
+				      (format "%s%s%s" "^[ ]*?" (nth 3 org-dict-tlfi--numbering-regexps) "\\.[ ]*?−?$")
+				      (format "%s%s%s" "^[ ]*?" (nth 4 org-dict-tlfi--numbering-regexps) ")[ ]*?$")
+				      (format "%s%s%s" "^[[:space:]\n]*?" (nth 5 org-dict-tlfi--numbering-regexps) ")[ ]*?")))
+
+(defvar org-dict-tlfi--potential-link-regexps '("[vV]\\."))
+;;; Service
+(defvar org-dict-tlfi-service '(:dict tlfi
+			              :name "TLFi"
+			              :url "https://cnrtl.fr/definition/%s"
+			              :parser org-dict-tlfi-parse
+			              :not-found-p org-dict-tlfi-not-found-p))
 ;;; Internal functions
 (defun org-dict-tlfi--total-entries (dom)
   "From a word's DOM, return the number of entries.
@@ -178,11 +196,12 @@ One word could have multiple entries (as noun, as adjective, etc.)"
 	   do (setq depth (1+ depth))
 	   finally (error "Cannot match tlf_cplan numbering: '%s'" string)))
 
-(defun org-dict-tlfi--emploi-crochet-domaine-p (node)
-  "Return non-nil when NODE's class is tlf_c{emploi, crochet, domaine}."
+(defun org-dict-tlfi--is-title-component-p (node)
+  "Return non-nil when NODE's class is tlf_c{emploi, crochet, domaine, etc.}."
   (or (org-dict--dom-node-simple-selector-p '(:tag span :attrs ((class . "tlf_cemploi"))) node)
       (org-dict--dom-node-simple-selector-p '(:tag span :attrs ((class . "tlf_ccrochet"))) node)
-      (org-dict--dom-node-simple-selector-p '(:tag span :attrs ((class . "tlf_cdomaine"))) node)))
+      (org-dict--dom-node-simple-selector-p '(:tag span :attrs ((class . "tlf_cdomaine"))) node)
+      (org-dict--dom-node-simple-selector-p '(:tag span :attrs ((class . "tlf_cconstruction"))) node)))
 
 (defun org-dict-tlfi--space-or-newline (node)
   "Depending NODE's class, return space or newline."
@@ -210,8 +229,70 @@ CURRENT-DEPTH and NUMBERING"
 (defun org-dict-tlfi--parse-cdefinition (cdefinition-node)
   (propertize (dom-texts cdefinition-node "") 'font-lock-face 'org-dict-definition-face))
 
+(defun org-dict-tlfi--emphasis-p (node)
+  (let ((tag (car node)))
+    (or (eq tag 'i)
+	(eq tag 'b))))
+
+(defun org-dict-tlfi--sup-p (node)
+  (let ((tag (car node)))
+    (eq tag 'sup)))
+
+(defun org-dict-tlfi--potential-link-match (str)
+  (cl-loop for regex in org-dict-tlfi--potential-link-regexps
+	   if (string-match regex str) return regex
+	   finally return nil))
+
+(defun org-dict-tlfi--make-link (pre-string nodes regex)
+  (let* ((pre-text-end (string-match regex pre-string))
+	 (pre-text (substring pre-string 0 pre-text-end))
+	 (left-inner-text (substring pre-string pre-text-end (length pre-string)))
+	 (n0 (nth 0 nodes))
+	 (n1 (nth 1 nodes))
+	 (n2 (nth 2 nodes))
+	 (word (if (eq (car n0) 'i)
+		   (nth 2 n0)
+		 (error "Failed to make Org link: %s is not italic" n1)))
+	 (sup (when (eq (car n1) 'sup)
+		(nth 2 n1)))
+	 (post-string (if sup n2 n1))
+	 (post-text-beg (string-match org-dict-tlfi--ref-regex post-string))
+	 (ref (match-string 1 post-string))
+	 (post-text-end (+ post-text-beg (length ref)))
+	 (right-inner-text (substring post-string 0 post-text-end))
+	 (post-text (substring post-string post-text-end (length post-string)))
+	 (desc (concat left-inner-text word (when sup (format "^{%s}" sup)) right-inner-text)))
+
+    (cl-loop for symb in '(pre-text post-text left-inner-text right-inner-text desc ref)
+	     if (or (not (stringp (symbol-value symb)))
+		    (string-empty-p (symbol-value symb)))
+	     do (error "Failed to make TLFi Org link: %s's value '%s' is not a string or empty" symb (symbol-value symb)))
+
+    (format "%s[[%s:%s::%s][%s]]%s" pre-text org-dict-tfli-link-type word ref desc post-text)))
+
 (defun org-dict-tlfi--parse-ccrochet (ccrochet-node)
-  (propertize (dom-texts ccrochet-node "") 'font-lock-face 'org-dict-comment-face))
+  (let ((text (apply #'concat
+		     (cl-loop with children = (dom-children ccrochet-node)
+			      while children
+			      for node = (pop children)
+			      for result = (cond ((stringp node)
+						  (cond ((stringp (car children)) node)
+							((org-dict-tlfi--emphasis-p (car children))
+							 (let ((regex (org-dict-tlfi--potential-link-match node)))
+							   (if regex
+							       (prog1 (org-dict-tlfi--make-link node children regex)
+								 (when (eq (car (nth 1 children) 'sup))
+								   (pop children))
+								 (pop children)
+								 (pop children))
+							     node)))
+							((org-dict-tlfi--sup-p (car children))
+							 (format "%s^{%s} " node (dom-texts (pop children) "")))
+							(t node)))
+						 (t (dom-texts node "")))
+			      do (message "%S" result)
+			      collect result))))
+    (propertize text 'font-lock-face 'org-dict-comment-face)))
 
 (defun org-dict-tlfi--parse-cdomaine (cdomaine-node)
   (propertize (dom-texts cdomaine-node "") 'font-lock-face 'org-dict-domain-face))
@@ -228,7 +309,7 @@ CURRENT-DEPTH and NUMBERING"
 (defun org-dict-tlfi--parse-csynonime (csynonime-node)
   "Parse node of class 'tlf_csynonime'.
 
-The typo comes from TLFi HTML source code."
+The misspelling comes from TLFi HTML source code."
   (propertize (dom-texts csynonime-node "") 'font-lock-face 'org-dict-synonym-face))
 
 (defun org-dict-tlfi--parse-paraputir (paraputir-node)
@@ -330,19 +411,10 @@ ROOT-DEPTH is used to correctly determine the Org heading and numbered list dept
             end and
 	    collect "\n\n" and
             collect (concat (org-dict-tlfi--parse-csynonime node) " ")
-       else if (or (org-dict-tlfi--emploi-crochet-domaine-p node)
-		   (org-dict--dom-node-simple-selector-p '(:tag span :attrs ((class . "tlf_cconstruction"))) node))
+       else if (org-dict-tlfi--is-title-component-p node)
             if (not title-settled?)
-                do (setq title (concat title " " (dom-texts node "")))
-            else if (org-dict--dom-node-simple-selector-p '(:tag span :attrs ((class . "tlf_cemploi"))) node)
-		collect (org-dict-tlfi--parse-cemploi node)
-            else if (org-dict--dom-node-simple-selector-p '(:tag span :attrs ((class . "tlf_ccrochet"))) node)
-                collect (concat (org-dict-tlfi--parse-ccrochet node) "\n")
-            else if (org-dict--dom-node-simple-selector-p '(:tag span :attrs ((class . "tlf_cdomaine"))) node)
-		collect (org-dict-tlfi--parse-cdomaine node)
-	    else if (org-dict--dom-node-simple-selector-p '(:tag span :attrs ((class . "tlf_cconstruction"))) node)
-                collect (org-dict-tlfi--parse-cconstruction node)
-            end
+                do (setq title (concat title " " (org-dict-tlfi--general-parse node t)))
+            else collect (org-dict-tlfi--general-parse node)
        else if (org-dict--dom-node-simple-selector-p '(:tag div :attrs ((class . "tlf_parah"))) node)
             if (not title-settled?)
                 do (setq title-settled? t) and
@@ -393,6 +465,8 @@ ROOT-DEPTH is used to correctly determine the Org heading and numbered list dept
 	 (concat (org-dict-tlfi--parse-csyntagme node) "\n"))
 	((org-dict--dom-node-simple-selector-p '(:tag span :attrs ((class . "tlf_cdomaine"))) node)
 	 (concat (org-dict-tlfi--parse-cdomaine node) (if inline? " " "\n")))
+	((org-dict--dom-node-simple-selector-p '(:tag span :attrs ((class . "tlf_cconstruction"))) node)
+	 (org-dict-tlfi--parse-cconstruction node))
 	((org-dict--dom-node-simple-selector-p '(:tag div :attrs ((class . "tlf_parah"))) node)
 	 (org-dict-tlfi--parse-parah node))
 	((org-dict--dom-node-simple-selector-p '(:tag div :attrs ((class . "tlf_parsynt"))) node)
@@ -414,9 +488,9 @@ ROOT-DEPTH is used to correctly determine the Org heading and numbered list dept
 							(> (:tag div)))))
 	 (nodes (dom-children article-node))
 	 (total-nodes (length nodes)))
-  (org-dict-tlfi--replace-markup article-node)
-  (org-dict-tlfi--remove-italic article-node)
-  (org-dict-tlfi--replace-scripts article-node)
+  ;;(org-dict-tlfi--replace-markup article-node)
+  ;;(org-dict-tlfi--remove-italic article-node)
+  ;;(org-dict-tlfi--replace-scripts article-node)
   (let ((result (cl-loop for node in nodes
 		   collect (org-dict-tlfi--general-parse node))))
   (apply #'concat result))))
@@ -434,9 +508,26 @@ ROOT-DEPTH is used to correctly determine the Org heading and numbered list dept
       (org-dict--org-fill-whole-buffer)
       (buffer-substring (point-min) (point-max)))))
 
+;;; Org link
+(defvar org-dict-tlfi-link-type "org-dict-tlfi")
+(org-link-set-parameters org-dict-tlfi-link-type :follow #'org-dict-tlfi-follow)
+;; TODO: Looks like when more dictionaries will come up
+;; 1. we could move this function in org-dict-core.el
+;; 2. and rename it as org-dict--follow-builder which would take
+;;    a link parser and a service as parameters.
+(defun org-dict-tlfi-follow (link &optional arg)
+  (let* ((link-data (org-dict-tlfi--parse-link link))
+	 (word (plist-get link-data :word))
+	 (ref (plist-get link-data :ref)))
+    (org-dict--setup-follow)
+    (org-dict--parse word org-dict-tlfi-service ref)))
+
+(defun org-dict-tlfi--parse-link (link)
+
+  )
 ;;; Main functions
 (defun org-dict-tlfi-parse (dom base-url)
-  "Parse a DOM coming from TLFI and outputs the result in Org mode.
+  "Parse a DOM coming from TLFi and outputs the result in Org mode.
 
 BASE-URL must be provided to find other entries of the word,
 in which case all of them will be parsed."

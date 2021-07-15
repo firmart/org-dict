@@ -86,6 +86,30 @@
   :package-version '(org-dict . "0.1"))
 
 ;;; Internal functions
+;;;; Org link utilities
+
+;; TODO setup follow/back stack as help-mode
+(defun org-dict--setup-follow ()
+  (unless (eq (current-buffer)
+	      (get-buffer org-dict-buffer))
+    (switch-to-buffer (get-buffer-create org-dict-buffer)))
+  (read-only-mode -1)
+  (erase-buffer))
+;;;; Parsing
+(defun org-dict--parse (word service &optional ref)
+  "Parse query result of WORD from the dictionary SERVICE."
+  (let* ((url (org-dict--word-url word service))
+	 (dom (org-dict--url-to-dom url))
+	 (parser (plist-get service :parser))
+	 (positioner (plist-get service :positioner))
+	 (not-found-p (plist-get service :not-found-p)))
+    (if (or (not dom)
+	    (and not-found-p (funcall not-found-p dom)))
+	(error "Cannot find definition of '%s' in %s" word (plist-get service :name))
+      (mapc #'insert (funcall parser dom url))
+      ;; FIXME: in a multi-dictionaries context, this may not be enough
+      (when (and ref positioner)
+	(funcall positioner ref)))))
 ;;;; Utilities
 (defun org-dict--org-fill-whole-buffer ()
   "Fill the whole Org buffer."
