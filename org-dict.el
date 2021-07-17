@@ -203,7 +203,7 @@ all results gathered from dictionaries of that language."
       ;; Allow markup to span over 10 lines
       (setcar (nthcdr 4 org-emphasis-regexp-components) 9)
       (org-set-emph-re 'org-emphasis-regexp-components org-emphasis-regexp-components)
-      (condition-case err
+      ;;(condition-case err
 	  (progn
 	    (mapc (lambda (service) (org-dict--parse word service))
 		  dict-services)
@@ -217,8 +217,9 @@ all results gathered from dictionaries of that language."
 	    (pop-to-buffer org-dict-buffer)
 	    (goto-char (point-min))
 	    (org-cycle))
-	(error (kill-buffer org-dict-buffer)
-               (error "%s" (error-message-string err)))))))
+	;;(error (kill-buffer org-dict-buffer)
+        ;;       (error "%s" (error-message-string err))))
+      )))
 
 (defun org-dict-at-point (&optional arg)
   "Search a word at point using Org-dict.

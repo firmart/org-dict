@@ -49,6 +49,14 @@ The least is the top level numbering:
   :group 'org-dict
   :package-version '(org-dict . "0.1"))
 
+(defcustom org-dict-tlfi-heading-max-length 80
+  "The maximal length of a Org heading.
+
+If the heading is too long, it will be moved to the content."
+  :type 'integer
+  :group 'org-dict
+  :package-version '(org-dict . "0.1"))
+
 ;;; Internal variables
 (defvar org-dict-tlfi--surround-regexp "^[[:space:]\n]*\\(\\)\\(.*?\\)\\([,: ]*\\)?$")
 
@@ -59,7 +67,9 @@ The least is the top level numbering:
 					"\\([a-z]\\)"
 					"\\([αβγδϵζηθικλ]\\)"))
 
-(defvar org-dict-tlfi--ref-regex (format "\\(%s?\\)" (string-join org-dict-tlfi--numbering-regexps "? ")))
+(defvar org-dict-tlfi--ref-regex (format "\\(%s? ?%s?\\)"
+					 "\\(Section\\)"
+					 (string-join (cdr org-dict-tlfi--numbering-regexps) "? ?")))
 
 (defvar org-dict-tlfi--cplan-regexps (list
 				      (format "%s%s%s" "^[ ]*?" (nth 0 org-dict-tlfi--numbering-regexps) "\\.[ ]*?$")
@@ -243,67 +253,107 @@ CURRENT-DEPTH and NUMBERING"
 	   if (string-match regex str) return regex
 	   finally return nil))
 
-(defun org-dict-tlfi--make-link (pre-string nodes regex)
-  (let* ((pre-text-end (string-match regex pre-string))
-	 (pre-text (substring pre-string 0 pre-text-end))
-	 (left-inner-text (substring pre-string pre-text-end (length pre-string)))
-	 (n0 (nth 0 nodes))
+(defun org-dict-tlfi--make-link (pre-string nodes regex pattern)
+  ;; <nodes> := <pre-string><desc><post-string>
+  ;; <pre-string> := <pre-text><left-inner-text>
+  ;; <post-string> := <right-inner-text><post-text>
+  (let* ((n0 (nth 0 nodes))
 	 (n1 (nth 1 nodes))
 	 (n2 (nth 2 nodes))
-	 (word (if (eq (car n0) 'i)
-		   (nth 2 n0)
-		 (error "Failed to make Org link: %s is not italic" n1)))
-	 (sup (when (eq (car n1) 'sup)
-		(nth 2 n1)))
-	 (post-string (if sup n2 n1))
-	 (post-text-beg (string-match org-dict-tlfi--ref-regex post-string))
-	 (ref (match-string 1 post-string))
-	 (post-text-end (+ post-text-beg (length ref)))
-	 (right-inner-text (substring post-string 0 post-text-end))
-	 (post-text (substring post-string post-text-end (length post-string)))
-	 (desc (concat left-inner-text word (when sup (format "^{%s}" sup)) right-inner-text)))
+	 (n3 (nth 3 nodes))
+	 (pre-text-end (string-match regex pre-string))
+	 (pre-text (substring pre-string 0 pre-text-end))
+	 (left-inner-text (substring pre-string pre-text-end (length pre-string)))
+	 word sup post-string desc post-text-beg ref post-text-end right-inner-text post-text)
 
-    (cl-loop for symb in '(pre-text post-text left-inner-text right-inner-text desc ref)
-	     if (or (not (stringp (symbol-value symb)))
-		    (string-empty-p (symbol-value symb)))
-	     do (error "Failed to make TLFi Org link: %s's value '%s' is not a string or empty" symb (symbol-value symb)))
+    (setq word (nth 2 n0))
+    (cond ((eq pattern 'v-section)
+	   (setq sup (nth 2 n2))
+	   (setq post-string n3))
+	  ((eq pattern 'v-normal)
+	   (setq post-string n1)))
 
-    (format "%s[[%s:%s::%s][%s]]%s" pre-text org-dict-tfli-link-type word ref desc post-text)))
+    (setq post-text-beg (string-match org-dict-tlfi--ref-regex post-string))
+    (unless post-text-beg
+      (error "Cannot find the beginning of the interlink in string %S" post-string))
+    (setq ref (match-string 1 post-string))
+    (setq post-text-end (+ post-text-beg (length ref)))
+    (setq right-inner-text (substring post-string 0 post-text-end))
+    (setq post-text (substring post-string post-text-end (length post-string)))
+    (setq desc (concat left-inner-text word (when sup (format "%s^{%s}" n1 sup)) right-inner-text))
 
-(defun org-dict-tlfi--parse-ccrochet (ccrochet-node)
-  (let ((text (apply #'concat
-		     (cl-loop with children = (dom-children ccrochet-node)
-			      while children
-			      for node = (pop children)
-			      for result = (cond ((stringp node)
-						  (cond ((stringp (car children)) node)
-							((org-dict-tlfi--emphasis-p (car children))
-							 (let ((regex (org-dict-tlfi--potential-link-match node)))
-							   (if regex
-							       (prog1 (org-dict-tlfi--make-link node children regex)
-								 (when (eq (car (nth 1 children) 'sup))
-								   (pop children))
-								 (pop children)
-								 (pop children))
-							     node)))
-							((org-dict-tlfi--sup-p (car children))
-							 (format "%s^{%s} " node (dom-texts (pop children) "")))
-							(t node)))
-						 (t (dom-texts node "")))
-			      do (message "%S" result)
-			      collect result))))
-    (propertize text 'font-lock-face 'org-dict-comment-face)))
+    (cl-loop for symb in (list pre-text post-text left-inner-text right-inner-text desc ref)
+	     if (or (not (stringp symb))
+		    (string-empty-p symb))
+	     do (error "Failed to make TLFi Org link: %s's value '%s' is not a string or empty" symb))
+    (format "%s[[%s:%s::%s][%s]]%s" pre-text org-dict-tlfi-link-type word ref desc post-text)))
 
-(defun org-dict-tlfi--parse-cdomaine (cdomaine-node)
-  (propertize (dom-texts cdomaine-node "") 'font-lock-face 'org-dict-domain-face))
 
-(defun org-dict-tlfi--parse-csyntagme (csyntagme-node)
-  (let* ((str (dom-texts csyntagme-node ""))
-	 (text (org-dict-tlfi--parse-string str)))
-    (propertize text 'font-lock-face 'org-dict-syntagma-face)))
+(defun org-dict-tlfi--parse-probe-link-end (nodes)
+  ;; v-section  :: <italic-word> <number-string> ("re"|"e") <section-ref>
+  ;; v-normal   :: <italic-word> <ref>
+  ;; TODO v-word-nth :: <italic-word> <bold-number>
+  ;; TODO v-section-nth :: <italic-word> <bold-number> <number-string> ("re"|"e") <section-ref>
+  ;; TODO v-normal-nth :: <italic-word> <bold-number> <ref>
+  (let ((error-string "Cannot find link's end in the list %s"))
+    (if (eq (car (nth 0 nodes)) 'i)
+	(cond ((and (and (stringp (nth 1 nodes))
+			 (string-match "^[[:space:]]*?[0-9][[:space:]]*?$" (nth 1 nodes)))
+		    (eq (car (nth 2 nodes)) 'sup)
+		    (and (stringp (nth 3 nodes))
+			 (string-match "^Section.*$" (nth 3 nodes))))
+	       '(:pattern v-section :count 4))
+	      ((string-match org-dict-tlfi--ref-regex (nth 1 nodes))
+	       '(:pattern v-normal :count 2))
+	      (t (error error-string nodes)))
+      (error error-string nodes))))
 
-(defun org-dict-tlfi--parse-cconstruction (cconstruction-node)
-  (dom-texts cconstruction-node ""))
+(defun org-dict-tlfi--parse-text-node (tnode)
+  "Parse TLFi's HTML text node (node that is not recursive)."
+  (apply #'concat
+	 (cl-loop with children = (dom-children tnode)
+		  while children
+		  for node = (pop children)
+		  for result = (cond ((stringp node)
+				      (cond ((stringp (car children)) node)
+					    ;; If the next node is a <i> or a <b>
+					    ((org-dict-tlfi--emphasis-p (car children))
+					     ;; Check if the current node contains "v." or "V."
+					     (let ((regex (org-dict-tlfi--potential-link-match node)))
+					       (if regex
+						   ;; If so we have an interlink: we pop out all nodes to the end of the link
+						   (let* ((result (org-dict-tlfi--parse-probe-link-end children))
+							  (pattern (plist-get result :pattern))
+							  (count (plist-get result :count))
+							  (nodes (nbutlast children (- (length children) count))))
+						     ;; and return the Org link
+						     (org-dict-tlfi--make-link node nodes regex pattern))
+						 node)))
+					    ((org-dict-tlfi--sup-p (car children))
+					     (format "%s^{%s} " node (dom-texts (pop children) "")))
+					    (t node)))
+				     (t (dom-texts node "")))
+		  collect result)))
+
+(defun org-dict-tlfi--parse-ccrochet (node)
+  (let (;(text (org-dict-tlfi--parse-text-node node))
+	(text2 (dom-texts node "")))
+    (propertize text2 'font-lock-face 'org-dict-comment-face)))
+
+(defun org-dict-tlfi--parse-cdomaine (node)
+  (let (;(text (org-dict-tlfi--parse-text-node node))
+	(text2 (dom-texts node "")))
+    (propertize text2 'font-lock-face 'org-dict-domain-face)))
+
+(defun org-dict-tlfi--parse-csyntagme (node)
+  (let (;(text (org-dict-tlfi--parse-text-node node))
+	(text2 (dom-texts node "")))
+    (propertize text2 'font-lock-face 'org-dict-syntagma-face)))
+
+(defun org-dict-tlfi--parse-cconstruction (node)
+  (let (;(text (org-dict-tlfi--parse-text-node node))
+	(text2 (dom-texts node "")))
+    text2))
 
 ;; TODO propertize differently Synon. & Anton.
 (defun org-dict-tlfi--parse-csynonime (csynonime-node)
@@ -413,8 +463,17 @@ ROOT-DEPTH is used to correctly determine the Org heading and numbered list dept
             collect (concat (org-dict-tlfi--parse-csynonime node) " ")
        else if (org-dict-tlfi--is-title-component-p node)
             if (not title-settled?)
-                do (setq title (concat title " " (org-dict-tlfi--general-parse node t)))
-            else collect (org-dict-tlfi--general-parse node)
+                do (let ((new-title (concat title " " (org-dict-tlfi--general-parse node t))))
+                     (if (> (length new-title) org-dict-tlfi-heading-max-length)
+                	 (setq title-settled? t)
+                       (setq title new-title)))
+                and if title-settled?
+                    collect (org-dict-tlfi--create-section-title title root-depth current-depth numbering-string)
+                    end
+                end and
+                if title-settled?
+                    collect (org-dict-tlfi--general-parse node)
+                end
        else if (org-dict--dom-node-simple-selector-p '(:tag div :attrs ((class . "tlf_parah"))) node)
             if (not title-settled?)
                 do (setq title-settled? t) and
@@ -522,6 +581,7 @@ ROOT-DEPTH is used to correctly determine the Org heading and numbered list dept
     (org-dict--setup-follow)
     (org-dict--parse word org-dict-tlfi-service ref)))
 
+;; TODO
 (defun org-dict-tlfi--parse-link (link)
 
   )

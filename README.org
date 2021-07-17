@@ -64,3 +64,12 @@
 - [ ] Navigation facilities
 - [X] URL/Services list (multiple dictionaries)
 - [X] Go to online dictionary URL (=completing-read= for multiple dictionaries)
+
+** Core
+- [ ] Implement a nodes list matcher
+  #+begin_src
+;; To match ((i nil "esprit") " 1" (sup nil "re") "Section II B 2 a).")
+`((:tag i)
+  (or ("^[[:space:]]*?[0-9][[:space:]]*?$" (:tag sup) "^Section.*$")
+      ,org-dict-tlfi--ref-regex))
+  #+end_src
