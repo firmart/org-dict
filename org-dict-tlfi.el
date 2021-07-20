@@ -67,12 +67,12 @@ If the heading is too long, it will be moved to the content."
 					"\\([a-z]\\)"
 					"\\([αβγδϵζηθικλ]\\)"))
 
-(defvar org-dict-tlfi--ref-regex (format "\\(%s? ?%s?\\)"
+(defvar org-dict-tlfi--ref-regex (format "^\\(%s? ?%s?\\)"
 					 "\\(Section\\)"
 					 (string-join (cdr org-dict-tlfi--numbering-regexps) "? ?")))
 
 (defvar org-dict-tlfi--cplan-regexps (list
-				      (format "%s%s%s" "^[ ]*?" (nth 0 org-dict-tlfi--numbering-regexps) "\\.[ ]*?$")
+				      (format "%s%s%s" "^[ ]*?" (nth 0 org-dict-tlfi--numbering-regexps) "\\.?[ ]*?$")
 				      (format "%s%s%s" "^[ ]*?" (nth 1 org-dict-tlfi--numbering-regexps) "\\.[ ]*?−?[ ]*?$")
 				      (format "%s%s%s" "^[ ]*?" (nth 2 org-dict-tlfi--numbering-regexps) "\\.[ ]*?−?[ ]*?$")
 				      (format "%s%s%s" "^[ ]*?" (nth 3 org-dict-tlfi--numbering-regexps) "\\.[ ]*?−?$")
@@ -121,77 +121,6 @@ One word could have multiple entries (as noun, as adjective, etc.)"
 		     collect (org-dict--url-to-dom entry-url) into remaining-dom
 		     finally return remaining-dom))))
 
-(defun org-dict-tlfi--remove-italic (dom)
-  "In DOM, remove some <i> which are right before <sup>.
-
-/word/^{exp} doesn't render well in Org mode."
-  (let* ((superscript-nodes (org-dict--dom-select dom '((:tag i)
-							(+ (:tag sup)))))
-	 (superscript-siblings-list (mapcar
-				     (lambda (superscript-node)
-				       (list superscript-node (dom-children (dom-parent dom superscript-node))))
-				     superscript-nodes))
-	 (italic-nodes (mapcar (lambda (superscript-siblings)
-				 (cl-loop with superscript-node = (car superscript-siblings)
-					  with siblings = (cadr superscript-siblings)
-					  for node in siblings
-					  with previous-node
-					  when (and previous-node
-						    (not (stringp previous-node))
-						    (eq superscript-node node)
-						    (eq 'i (car previous-node)))
-					  return previous-node
-					  do (setq previous-node node)))
-			       superscript-siblings-list)))
-    (mapc (lambda (node)
-	    (when node
-    	      (org-dict--dom-replace-node dom node (caddr node))))
-    	  italic-nodes)))
-
-(defun org-dict-tlfi--replace-scripts (dom)
-  "In DOM, replace <sup> to superscript markup of Org mode."
-  (let* ((all-superscript-nodes (org-dict--dom-select dom '((:tag sup))))
-	(cplan-superscript-nodes (org-dict--dom-select dom '((:attrs ((class . "tlf_cplan")))
-							     (> (:tag sup)))))
-	(target-superscript-nodes (cl-set-difference all-superscript-nodes cplan-superscript-nodes)))
-
-    (mapc (lambda (node)
-	    (org-dict--dom-replace-node dom node (concat "^{" (if (stringp (caddr node))
-								  (caddr node)
-								(dom-texts (caddr node) ""))
-							 "}")))
-	  target-superscript-nodes)))
-
-
-(defun org-dict-tlfi--node-replace-with-surround (dom node char)
-  "In DOM, surround NODE's text content with CHAR."
-  (when-let* ((content (caddr node))
-	      (replaced-content (replace-regexp-in-string
-				 org-dict-tlfi--surround-regexp (format "\u200B\\1%s\\2%s\\3\u200B" char char) content)))
-    (org-dict--dom-replace-node dom node replaced-content)))
-
-(defun org-dict-tlfi--replace-markup (dom)
-  "Replace HTML markup into DOM markup."
-  (let* ((all-bold-nodes (org-dict--dom-select dom '((:tag b))))
-	 (cplan-bold-nodes (org-dict--dom-select dom '((:attrs ((class . "tlf_cplan")))
-						       (=> (:tag b)))))
-	 (target-bold-nodes (cl-set-difference all-bold-nodes cplan-bold-nodes))
-	 (all-italic-nodes (org-dict--dom-select dom '((:tag i))))
-	 (cplan-italic-nodes (org-dict--dom-select dom '((:attrs ((class . "tlf_cplan")))
-							 (=> (:tag i)))))
-	 (target-italic-nodes (cl-set-difference all-italic-nodes cplan-italic-nodes))
-	 (all-smallcaps-nodes (org-dict--dom-select dom '((:attrs ((class . "tlf_smallcaps")))))))
-
-    (mapc (lambda (node)
-	   (org-dict-tlfi--node-replace-with-surround dom node "*"))
-	   target-bold-nodes)
-    (mapc (lambda (node)
-	   (org-dict-tlfi--node-replace-with-surround dom node "*"))
-	  all-smallcaps-nodes)
-    (mapc (lambda (node)
-	   (org-dict-tlfi--node-replace-with-surround dom node "/"))
-	  target-italic-nodes)))
-
 (defun org-dict-tlfi--parse-cplan-string (string)
   "Parse TLFi numbering STRING.  Return its string representation."
   (cl-loop for regexp in org-dict-tlfi--cplan-regexps
@@ -231,7 +160,7 @@ CURRENT-DEPTH and NUMBERING"
 	;; Org mode heading. Keep TLFi numbering for reference purpose.
 	(format "%s (%s) %s\n" (make-string (- (+ current-depth org-dict-tlfi-heading-max-depth) root-depth) ?*) numbering title)
       ;; Org mode numbered list
-      (format "%s%s. %s " (make-string (* (- current-depth (1+ org-dict-tlfi-heading-max-depth)) org-dict-indentation-width) ? ) numbering title))))
+      (format "%s%s. %s " (org-dict-tlfi--item-indentation current-depth) numbering title))))
 
 (defun org-dict-tlfi--parse-cemploi (cemploi-node)
   (propertize (dom-texts cemploi-node "") 'font-lock-face 'org-dict-use-face))
@@ -273,29 +202,34 @@ CURRENT-DEPTH and NUMBERING"
 	  ((eq pattern 'v-normal)
 	   (setq post-string n1)))
 
-    (setq post-text-beg (string-match org-dict-tlfi--ref-regex post-string))
-    (unless post-text-beg
-      (error "Cannot find the beginning of the interlink in string %S" post-string))
-    (setq ref (match-string 1 post-string))
-    (setq post-text-end (+ post-text-beg (length ref)))
-    (setq right-inner-text (substring post-string 0 post-text-end))
-    (setq post-text (substring post-string post-text-end (length post-string)))
-    (setq desc (concat left-inner-text word (when sup (format "%s^{%s}" n1 sup)) right-inner-text))
+    (unless (eq pattern 'it-word)
+      (setq post-text-beg (string-match org-dict-tlfi--ref-regex post-string))
+      (unless post-text-beg
+	(error "TLFi: cannot find the end of the interlink in string %S" post-string))
 
-    (cl-loop for symb in (list pre-text post-text left-inner-text right-inner-text desc ref)
-	     if (or (not (stringp symb))
-		    (string-empty-p symb))
-	     do (error "Failed to make TLFi Org link: %s's value '%s' is not a string or empty" symb))
-    (format "%s[[%s:%s::%s][%s]]%s" pre-text org-dict-tlfi-link-type word ref desc post-text)))
+      (setq ref (match-string 1 post-string))
+      (setq post-text-end (+ post-text-beg (length ref)))
+      (setq right-inner-text (substring post-string 0 post-text-end))
+      (setq post-text (substring post-string post-text-end (length post-string))))
 
+    ;; Cannot display superscript in Org link.
+    (setq desc (concat left-inner-text word (when sup (format "%s%s " n1 sup)) right-inner-text))
+    (format "%s%s%s" pre-text
+	    (org-make-link-string
+	     (format "%s:%s::%s" org-dict-tlfi-link-type word ref)
+		     desc)
+	     post-text)))
 
 (defun org-dict-tlfi--parse-probe-link-end (nodes)
-  ;; v-section  :: <italic-word> <number-string> ("re"|"e") <section-ref>
-  ;; v-normal   :: <italic-word> <ref>
-  ;; TODO v-word-nth :: <italic-word> <bold-number>
-  ;; TODO v-section-nth :: <italic-word> <bold-number> <number-string> ("re"|"e") <section-ref>
-  ;; TODO v-normal-nth :: <italic-word> <bold-number> <ref>
-  (let ((error-string "Cannot find link's end in the list %s"))
+  ;; v-section :: ("v."|"V.") <italic-word> <number-string> ("re"|"e") <section-ref>
+  ;; v-normal :: ("v."|"V.") <italic-word> <ref>
+  ;; TODO v-word-nth :: ("v."|"V.") <italic-word> <bold-number>
+  ;; TODO v-section-nth :: ("v."|"V.") <italic-word> <bold-number> <number-string> ("re"|"e") <section-ref>
+  ;; TODO v-normal-nth :: ("v."|"V.") <italic-word> <bold-number> <ref>
+  ;; TODO it-section :: <italic-word> <section-ref>
+  ;; TODO it-normal :: <italic-word> <ref>
+  ;; it-word :: <italic-word>
+  (let ((unknown '(:pattern unknown)))
     (if (eq (car (nth 0 nodes)) 'i)
 	(cond ((and (and (stringp (nth 1 nodes))
 			 (string-match "^[[:space:]]*?[0-9][[:space:]]*?$" (nth 1 nodes)))
@@ -303,10 +237,12 @@ CURRENT-DEPTH and NUMBERING"
 		    (and (stringp (nth 3 nodes))
 			 (string-match "^Section.*$" (nth 3 nodes))))
 	       '(:pattern v-section :count 4))
-	      ((string-match org-dict-tlfi--ref-regex (nth 1 nodes))
-	       '(:pattern v-normal :count 2))
-	      (t (error error-string nodes)))
-      (error error-string nodes))))
+	      ((and (stringp (nth 1 nodes)))
+	       (if (string-match org-dict-tlfi--ref-regex (nth 1 nodes))
+		   '(:pattern v-normal :count 2)
+		'(:pattern it-word :count 1)))
+	      (t unknown))
+      unknown)))
 
 (defun org-dict-tlfi--parse-text-node (tnode)
   "Parse TLFi's HTML text node (node that is not recursive)."
@@ -319,15 +255,20 @@ CURRENT-DEPTH and NUMBERING"
 					    ;; If the next node is a <i> or a <b>
 					    ((org-dict-tlfi--emphasis-p (car children))
 					     ;; Check if the current node contains "v." or "V."
-					     (let ((regex (org-dict-tlfi--potential-link-match node)))
+					     (let ((regex (org-dict-tlfi--potential-link-match node))
+						    result pattern count nodes)
 					       (if regex
 						   ;; If so we have an interlink: we pop out all nodes to the end of the link
-						   (let* ((result (org-dict-tlfi--parse-probe-link-end children))
-							  (pattern (plist-get result :pattern))
-							  (count (plist-get result :count))
-							  (nodes (nbutlast children (- (length children) count))))
+						   (progn
+						     (setq result (org-dict-tlfi--parse-probe-link-end children))
+						     (setq pattern (plist-get result :pattern))
+						     (setq count (plist-get result :count))
 						     ;; and return the Org link
-						     (org-dict-tlfi--make-link node nodes regex pattern))
+						     (if (eq pattern 'unknown)
+							 node
+						       (setq nodes (cl-subseq children 0 count))
+						       (setq children (cl-subseq children count))
+						       (org-dict-tlfi--make-link node nodes regex pattern)))
 						 node)))
 					    ((org-dict-tlfi--sup-p (car children))
 					     (format "%s^{%s} " node (dom-texts (pop children) "")))
@@ -336,24 +277,20 @@ CURRENT-DEPTH and NUMBERING"
 		  collect result)))
 
 (defun org-dict-tlfi--parse-ccrochet (node)
-  (let (;(text (org-dict-tlfi--parse-text-node node))
-	(text2 (dom-texts node "")))
-    (propertize text2 'font-lock-face 'org-dict-comment-face)))
+  (let ((text (org-dict-tlfi--parse-text-node node)))
+    (propertize text 'font-lock-face 'org-dict-comment-face)))
 
 (defun org-dict-tlfi--parse-cdomaine (node)
-  (let (;(text (org-dict-tlfi--parse-text-node node))
-	(text2 (dom-texts node "")))
-    (propertize text2 'font-lock-face 'org-dict-domain-face)))
+  (let ((text (org-dict-tlfi--parse-text-node node)))
+    (propertize text 'font-lock-face 'org-dict-domain-face)))
 
 (defun org-dict-tlfi--parse-csyntagme (node)
-  (let (;(text (org-dict-tlfi--parse-text-node node))
-	(text2 (dom-texts node "")))
-    (propertize text2 'font-lock-face 'org-dict-syntagma-face)))
+  (let ((text (org-dict-tlfi--parse-text-node node)))
+    (propertize text 'font-lock-face 'org-dict-syntagma-face)))
 
 (defun org-dict-tlfi--parse-cconstruction (node)
-  (let (;(text (org-dict-tlfi--parse-text-node node))
-	(text2 (dom-texts node "")))
-    text2))
+  (let ((text (org-dict-tlfi--parse-text-node node)))
+    text))
 
 ;; TODO propertize differently Synon. & Anton.
 (defun org-dict-tlfi--parse-csynonime (csynonime-node)
@@ -362,36 +299,63 @@ CURRENT-DEPTH and NUMBERING"
 The misspelling comes from TLFi HTML source code."
   (propertize (dom-texts csynonime-node "") 'font-lock-face 'org-dict-synonym-face))
 
-(defun org-dict-tlfi--parse-paraputir (paraputir-node)
+(defun org-dict-tlfi--parse-paraputir (paraputir-node current-depth)
   (let ((children (dom-children paraputir-node)))
     (apply #'concat
-	   (cl-loop for node in children
-		    collect (org-dict-tlfi--general-parse node t)))))
+	   (cl-loop with first-node? = t
+	            for node in children
+		    if first-node?
+		        if (stringp node)
+			    collect (format "%s- " (org-dict-tlfi--item-indentation current-depth t))
+			else
+			    do (error "TLFi: paraputir's first children is not a string")
+			end
+		    else
+		        collect (org-dict-tlfi--general-parse node t current-depth)
+		    end
+		    do (setq first-node? nil)))))
 
-(defun org-dict-tlfi--parse-tabulation (tabulation-node)
+(defun org-dict-tlfi--parse-tabulation (tabulation-node current-depth)
   (let ((children (dom-children tabulation-node)))
     (apply #'concat
 	   (cl-loop for node in children
 		    collect (cond
 			     ((stringp node) (org-dict-tlfi--parse-string node))
 		             ((org-dict--dom-node-simple-selector-p '(:tag span :attrs ((class . "tlf_cexemple"))) node)
-                              (org-dict-tlfi--parse-cexemple node))
+                              (org-dict-tlfi--parse-cexemple node current-depth))
 			     (t (dom-texts node "")))))))
 
 (defun org-dict-tlfi--parse-string (str)
   "Parse a STR node."
   (if (string= " " str) ""
-  (replace-regexp-in-string "[[:space:]\n]+" " " str)))
+    (replace-regexp-in-string "[[:space:]\n]+" " " str)))
+
+;; TODO
+(defun org-dict-tlfi--parse-cothers (node)
+
+  )
+
+(defun org-dict-tlfi--item-indentation (current-depth &optional nested?)
+  (let ((indent-level (+ current-depth
+			 (if nested? 1 0)
+			 (- (1+ org-dict-tlfi-heading-max-depth)))))
+    (make-string
+     (* (if (> indent-level 0) indent-level 0)
+	org-dict-indentation-width)
+     ? )))
 
 ;; TODO propertize author, bbg, date
 ;; TODO take account of depth
-(defun org-dict-tlfi--parse-cexemple (node)
+(defun org-dict-tlfi--parse-cexemple (node current-depth)
   (let* ((content (dom-texts node ""))
 	 (unumbered-content (replace-regexp-in-string "^[0-9]+\\.[ ]*\\(.*\\)" "\\1" content))
-	 (target-content (replace-regexp-in-string "− \\(.*\\)" "\\1" unumbered-content)))
-    (concat "\n#+BEGIN_QUOTE\n"
+	 (target-content (replace-regexp-in-string "− \\(.*\\)" "\\1" unumbered-content))
+	 (indentation (org-dict-tlfi--item-indentation current-depth t)))
+    (format "\n%s#+BEGIN_QUOTE\n%s%s\n%s#+END_QUOTE\n"
+	    indentation
+	    indentation
 	    (propertize target-content 'font-lock-face 'org-dict-example-face)
-	    "\n#+END_QUOTE\n")))
+	    indentation)))
 
 ;; Source of sigles http://www.languefrancaise.net/forum/viewtopic.php?id=11703
 (defun org-dict-tlfi--parse-parah (parah-node &optional root-depth)
@@ -400,102 +364,59 @@ The misspelling comes from TLFi HTML source code."
 ROOT-DEPTH is used to correctly determine the Org heading and numbered list depth."
   (let* ((children (dom-children parah-node))
 	 (total-nodes (length children)))
-  (apply #'concat (cl-loop for node in children
-       with node-count = 0
-       with root-depth = root-depth
-       with current-depth
-       with numbering-string
-       with title
-       with title-settled?
-       do (setq node-count (1+ node-count))
-       if (stringp node)
-            if (not title-settled?)
-                do (setq title (concat title (org-dict-tlfi--parse-string node)))
-	    else
-                collect (org-dict-tlfi--parse-string node)
-	    end
-       else if (org-dict--dom-node-simple-selector-p '(:tag span :attrs ((class . "tlf_cplan"))) node)
-            do (setq current-depth (org-dict-tlfi--parse-cplan-depth (dom-texts node ""))) and
-            do (setq numbering-string (org-dict-tlfi--parse-cplan-string (dom-texts node ""))) and
-            when (not root-depth) do (setq root-depth current-depth) end
-	    ;; Potential HTML nodes used to make an Org heading
-       else if (org-dict--dom-node-simple-selector-p '(:tag span :attrs ((class . "tlf_cexemple"))) node)
-            if (not title-settled?)
-                do (setq title-settled? t) and
-                collect (org-dict-tlfi--create-section-title title root-depth current-depth numbering-string)
-            end and
-	    collect "\n" and
-            collect (org-dict-tlfi--parse-cexemple node)
-       else if (org-dict--dom-node-simple-selector-p '(:tag div :attrs ((class . "tlf_parsynt"))) node)
-            if (not title-settled?)
-                do (setq title-settled? t) and
-                collect (org-dict-tlfi--create-section-title title root-depth current-depth numbering-string)
-            end and
-	    collect "\n" and
-            collect (org-dict-tlfi--parse-parsynt node)
-       else if (org-dict--dom-node-simple-selector-p '(:tag div :attrs ((class . "tlf_tabulation"))) node)
-            if (not title-settled?)
-                do (setq title-settled? t) and
-                collect (org-dict-tlfi--create-section-title title root-depth current-depth numbering-string)
-            end and
-	    collect "\n" and
-            collect (org-dict-tlfi--parse-tabulation node)
-       else if (org-dict--dom-node-simple-selector-p '(:tag div :attrs ((class . "tlf_paraputir"))) node)
-            if (not title-settled?)
-                do (setq title-settled? t) and
-                collect (org-dict-tlfi--create-section-title title root-depth current-depth numbering-string)
-            end and
-	    collect "\n\n" and
-            collect (concat (org-dict-tlfi--parse-paraputir node) " ")
-       else if (org-dict--dom-node-simple-selector-p '(:tag span :attrs ((class . "tlf_csyntagme"))) node)
-            if (not title-settled?)
-                do (setq title-settled? t) and
-                collect (org-dict-tlfi--create-section-title title root-depth current-depth numbering-string)
-            end and
-	    collect "\n\n" and
-            collect (concat (org-dict-tlfi--parse-csyntagme node) " ")
-       else if (org-dict--dom-node-simple-selector-p '(:tag span :attrs ((class . "tlf_csynonime"))) node)
-            if (not title-settled?)
-                do (setq title-settled? t) and
-                collect (org-dict-tlfi--create-section-title title root-depth current-depth numbering-string)
-            end and
-	    collect "\n\n" and
-            collect (concat (org-dict-tlfi--parse-csynonime node) " ")
-       else if (org-dict-tlfi--is-title-component-p node)
-            if (not title-settled?)
-                do (let ((new-title (concat title " " (org-dict-tlfi--general-parse node t))))
-                     (if (> (length new-title) org-dict-tlfi-heading-max-length)
-                	 (setq title-settled? t)
-                       (setq title new-title)))
-                and if title-settled?
-                    collect (org-dict-tlfi--create-section-title title root-depth current-depth numbering-string)
+    (apply #'concat
+	   (cl-loop for node in children
+                    with node-count = 0
+                    with root-depth = root-depth
+                    with current-depth
+                    with numbering-string
+                    with title
+                    with title-settled?
+                    do (setq node-count (1+ node-count))
+                    if (stringp node)
+                         if (not title-settled?)
+                             do (setq title (concat title (org-dict-tlfi--parse-string node)))
+                    	    else
+                             collect (org-dict-tlfi--parse-string node)
+                    	    end
+                    else if (org-dict--dom-node-simple-selector-p '(:tag span :attrs ((class . "tlf_cplan"))) node)
+                         do (setq current-depth (org-dict-tlfi--parse-cplan-depth (dom-texts node ""))) and
+                         do (setq numbering-string (org-dict-tlfi--parse-cplan-string (dom-texts node ""))) and
+                         when (not root-depth) do (setq root-depth current-depth) end
+                    else if (org-dict-tlfi--is-title-component-p node)
+                         if (not title-settled?)
+                             do (let ((new-title (concat title " " (org-dict-tlfi--general-parse node t current-depth))))
+                                  (if (> (length new-title) org-dict-tlfi-heading-max-length)
+                             	 (setq title-settled? t)
+                                    (setq title new-title)))
+                             and if title-settled?
+                                 collect (org-dict-tlfi--create-section-title title root-depth current-depth numbering-string)
+                                 end
+                             end and
+                             if title-settled?
+                                 collect (org-dict-tlfi--general-parse node nil current-depth)
+                             end
+                    else if (org-dict--dom-node-simple-selector-p '(:tag div :attrs ((class . "tlf_parah"))) node)
+                         if (not title-settled?)
+                             do (setq title-settled? t) and
+                             collect (org-dict-tlfi--create-section-title title root-depth current-depth numbering-string)
+                         end and
+                    	    collect "\n" and
+                         collect (org-dict-tlfi--parse-parah node root-depth)
+                    else
+                         if (not title-settled?)
+                             do (setq title-settled? t) and
+                             collect (org-dict-tlfi--create-section-title title root-depth current-depth numbering-string)
+                         end and
+                         collect (org-dict-tlfi--general-parse node nil current-depth)
                     end
-                end and
-                if title-settled?
-                    collect (org-dict-tlfi--general-parse node)
-                end
-       else if (org-dict--dom-node-simple-selector-p '(:tag div :attrs ((class . "tlf_parah"))) node)
-            if (not title-settled?)
-                do (setq title-settled? t) and
-                collect (org-dict-tlfi--create-section-title title root-depth current-depth numbering-string)
-            end and
-	    collect "\n" and
-            collect (org-dict-tlfi--parse-parah node root-depth)
-       else
-            if (not title-settled?)
-                do (setq title-settled? t) and
-                collect (org-dict-tlfi--create-section-title title root-depth current-depth numbering-string)
-            end and
-            collect (dom-texts node "") and
-            collect (org-dict-tlfi--space-or-newline node)
-       end
-       if (= total-nodes node-count)
-           if (not title-settled?)
-               do (setq title-settled? t) and
-               collect (org-dict-tlfi--create-section-title title root-depth current-depth numbering-string)
-	   end and
-	   collect "\n\n"
-       end))))
+                    if (= total-nodes node-count)
+                        if (not title-settled?)
+                            do (setq title-settled? t) and
+                            collect (org-dict-tlfi--create-section-title title root-depth current-depth numbering-string)
+                    	   end and
+                    	   collect "\n"
+                    end))))
 
 (defun org-dict-tlfi--parse-parsynt (parsynt-node)
   (let ((children (dom-children parsynt-node)))
@@ -507,38 +428,38 @@ ROOT-DEPTH is used to correctly determine the Org heading and numbered list dept
                               (org-dict-tlfi--parse-csyntagme node))
 			     (t (dom-texts node "")))))))
 
-(defun org-dict-tlfi--general-parse (node &optional inline?)
+(defun org-dict-tlfi--general-parse (node &optional inline? current-depth)
   "Parse a TLFi HTML NODE. Line breaks depend on INLINE?."
   (cond ((stringp node) (org-dict-tlfi--parse-string node))
 	((org-dict--dom-node-simple-selector-p '(:tag span :attrs ((class . "tlf_cemploi"))) node)
-	 (concat (org-dict-tlfi--parse-cemploi node) "\n"))
+	 (concat (org-dict-tlfi--parse-cemploi node) (if inline? " " "\n")))
 	((org-dict--dom-node-simple-selector-p '(:tag span :attrs ((class . "tlf_ccrochet"))) node)
 	 (concat (org-dict-tlfi--parse-ccrochet node) (if inline? " " "\n\n")))
 	((org-dict--dom-node-simple-selector-p '(:tag span :attrs ((class . "tlf_csynonime"))) node)
 	 (org-dict-tlfi--parse-csynonime node))
 	((org-dict--dom-node-simple-selector-p '(:tag span :attrs ((class . "tlf_cdefinition"))) node)
-	 (concat (org-dict-tlfi--parse-cdefinition node) (if inline? " " "\n")))
+	 (concat (org-dict-tlfi--parse-cdefinition node) " "))
 	((org-dict--dom-node-simple-selector-p '(:tag div :attrs ((class . "tlf_paraputir"))) node)
-	 (concat "\n\n" (org-dict-tlfi--parse-paraputir node) "\n"))
+	 (concat "\n\n" (org-dict-tlfi--parse-paraputir node current-depth) "\n"))
 	((org-dict--dom-node-simple-selector-p '(:tag span :attrs ((class . "tlf_csyntagme"))) node)
-	 (concat (org-dict-tlfi--parse-csyntagme node) "\n"))
+	 (concat (org-dict-tlfi--parse-csyntagme node) (if inline? " " "\n")))
 	((org-dict--dom-node-simple-selector-p '(:tag span :attrs ((class . "tlf_cdomaine"))) node)
 	 (concat (org-dict-tlfi--parse-cdomaine node) (if inline? " " "\n")))
 	((org-dict--dom-node-simple-selector-p '(:tag span :attrs ((class . "tlf_cconstruction"))) node)
 	 (org-dict-tlfi--parse-cconstruction node))
 	((org-dict--dom-node-simple-selector-p '(:tag div :attrs ((class . "tlf_parah"))) node)
-	 (org-dict-tlfi--parse-parah node))
+	 (concat "\n" (org-dict-tlfi--parse-parah node)))
 	((org-dict--dom-node-simple-selector-p '(:tag div :attrs ((class . "tlf_parsynt"))) node)
 	 (org-dict-tlfi--parse-parsynt node))
 	((org-dict--dom-node-simple-selector-p '(:tag div :attrs ((class . "tlf_tabulation"))) node)
-	 (org-dict-tlfi--parse-tabulation node))
+	 (org-dict-tlfi--parse-tabulation node current-depth))
 	((org-dict--dom-node-simple-selector-p '(:tag span :attrs ((class . "tlf_cexemple"))) node)
-	 (org-dict-tlfi--parse-cexemple node))
+	 (org-dict-tlfi--parse-cexemple node current-depth))
 	((org-dict--dom-node-simple-selector-p '(:tag div :attrs ((class . "tlf_cvedette"))) node)
 	 "")
 	((org-dict--dom-node-simple-selector-p '(:tag div :attrs ((class . "tlf_parothers"))) node)
-	 (concat (dom-texts node "") (if inline? "" "\n\n")))
-	(t (concat (dom-texts node "") (if inline? "" "\n\n")))))
+	 (concat (dom-texts node "") (if inline? "" "\n")))
+	(t (concat (dom-texts node "") (if inline? "" "\n")))))
 
 (defun org-dict-tlfi--parse-entry-content (dom)
   "Parse a single TLFi entry of DOM."
@@ -547,9 +468,6 @@ ROOT-DEPTH is used to correctly determine the Org heading and numbered list dept
 							(> (:tag div)))))
 	 (nodes (dom-children article-node))
 	 (total-nodes (length nodes)))
-  ;;(org-dict-tlfi--replace-markup article-node)
-  ;;(org-dict-tlfi--remove-italic article-node)
-  ;;(org-dict-tlfi--replace-scripts article-node)
   (let ((result (cl-loop for node in nodes
 		   collect (org-dict-tlfi--general-parse node))))
   (apply #'concat result))))
@@ -559,12 +477,13 @@ ROOT-DEPTH is used to correctly determine the Org heading and numbered list dept
   (let ((entry-name (downcase (org-dict-tlfi--current-entry-name dom))))
     (with-temp-buffer
       (org-mode)
+      (auto-fill-mode)
       (org-insert-heading)
       (insert entry-name "\n")
       (insert (org-dict-tlfi--parse-entry-content dom))
       (insert "\n")
       ;; TODO parse correctly addendum (etymology etc.)
-      (org-dict--org-fill-whole-buffer)
+      (org-dict--fill-whole-buffer '(quote-block paragraph item))
       (buffer-substring (point-min) (point-max)))))
 
 ;;; Org link

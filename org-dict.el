@@ -204,21 +204,25 @@ all results gathered from dictionaries of that language."
       (setcar (nthcdr 4 org-emphasis-regexp-components) 9)
       (org-set-emph-re 'org-emphasis-regexp-components org-emphasis-regexp-components)
       ;;(condition-case err
-	  (progn
-	    (mapc (lambda (service) (org-dict--parse word service))
-		  dict-services)
-	    (setq org-dict--current-word word)
-	    (setq org-dict--current-services dict-services)
-	    (read-only-mode)
-	    (org-global-cycle)
-	    (org-element-map (org-element-parse-buffer 'element) 'quote-block
-	      (lambda (node) (goto-char (org-element-property :begin node)) (org-cycle)))
-	    (org-set-emph-re 'org-emphasis-regexp-components old-org-emphasis-regexp-components)
-	    (pop-to-buffer org-dict-buffer)
-	    (goto-char (point-min))
-	    (org-cycle))
-	;;(error (kill-buffer org-dict-buffer)
-        ;;       (error "%s" (error-message-string err))))
+      (progn
+	(mapc (lambda (service) (org-dict--parse word service))
+	      dict-services)
+	(setq org-dict--current-word word)
+	(setq org-dict--current-services dict-services)
+	(read-only-mode)
+	(org-global-cycle)
+	(org-element-map
+	    (org-element-parse-buffer 'element)
+	    'quote-block
+	  (lambda (node)
+	    (goto-char (org-element-property :begin node))
+	    (org-cycle)))
+	(org-set-emph-re 'org-emphasis-regexp-components old-org-emphasis-regexp-components)
+	(pop-to-buffer org-dict-buffer)
+	(goto-char (point-min))
+	(org-cycle))
+      ;;(error (kill-buffer org-dict-buffer)
+      ;;       (error "%s" (error-message-string err))))
       )))
 
 (defun org-dict-at-point (&optional arg)
