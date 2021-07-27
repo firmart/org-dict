@@ -111,19 +111,30 @@
       (when (and ref positioner)
 	(funcall positioner ref)))))
 ;;;; Utilities
+(defun org-dict--fold-element (types)
+  "Fold Org elements of TYPES in the whole Org buffer."
+  (interactive
+   (list '(quote-block)))
+  (org-element-map
+      (org-element-parse-buffer 'element)
+      types
+    (lambda (node)
+      (goto-char (org-element-property :begin node))
+      (org-cycle))))
+
 (defun org-dict--fill-whole-buffer (types)
   "Fill Org elements of TYPES in the whole Org buffer."
-  (interactive)
-  (save-excursion
-    (mapc (lambda (n)
-	    (goto-char n)
-	    (org-fill-paragraph))
-	  (reverse
-	   (org-element-map (org-element-parse-buffer 'element)
-	       types
-	     (lambda (elt)
-	       (when-let* ((target-point (org-element-property :contents-begin elt)))
-		 target-point)))))))
+  (interactive (list 'paragraph))
+  (org-with-wide-buffer
+   (mapc (lambda (elt-beg)
+	   (goto-char elt-beg)
+	   (org-fill-paragraph nil t))
+	 (reverse
+	  (org-element-map (org-element-parse-buffer 'element)
+	      types
+	    (lambda (elt)
+	      (when-let* ((target-point (org-element-property :contents-begin elt)))
+		target-point)))))))
 
 (defun org-dict--remove-redundant-spaces (str)
   "Remove redundant spaces in STR which are ignored by HTML or LaTeX rendering."

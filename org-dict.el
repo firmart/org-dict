@@ -205,22 +205,18 @@ all results gathered from dictionaries of that language."
       (org-set-emph-re 'org-emphasis-regexp-components org-emphasis-regexp-components)
       ;;(condition-case err
       (progn
-	(mapc (lambda (service) (org-dict--parse word service))
+	(mapc (lambda (service)
+		(org-dict--parse word service))
 	      dict-services)
 	(setq org-dict--current-word word)
 	(setq org-dict--current-services dict-services)
-	(read-only-mode)
+	(org-dict--fill-whole-buffer 'paragraph)
+	(org-dict--fold-element '(quote-block))
 	(org-global-cycle)
-	(org-element-map
-	    (org-element-parse-buffer 'element)
-	    'quote-block
-	  (lambda (node)
-	    (goto-char (org-element-property :begin node))
-	    (org-cycle)))
-	(org-set-emph-re 'org-emphasis-regexp-components old-org-emphasis-regexp-components)
 	(pop-to-buffer org-dict-buffer)
 	(goto-char (point-min))
-	(org-cycle))
+	(org-set-emph-re 'org-emphasis-regexp-components old-org-emphasis-regexp-components)
+        (read-only-mode))
       ;;(error (kill-buffer org-dict-buffer)
       ;;       (error "%s" (error-message-string err))))
       )))

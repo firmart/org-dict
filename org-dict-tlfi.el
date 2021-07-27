@@ -79,7 +79,8 @@ If the heading is too long, it will be moved to the content."
 				      (format "%s%s%s" "^[ ]*?" (nth 4 org-dict-tlfi--numbering-regexps) ")[ ]*?$")
 				      (format "%s%s%s" "^[[:space:]\n]*?" (nth 5 org-dict-tlfi--numbering-regexps) ")[ ]*?")))
 
-(defvar org-dict-tlfi--potential-link-regexps '("[vV]\\."))
+;; exclude "... adv. de lieu"
+(defvar org-dict-tlfi--potential-link-regexps '("\\(^\\|[[:space:]]\\)[vV]\\."))
 ;;; Service
 (defvar org-dict-tlfi-service '(:dict tlfi
 			              :name "TLFi"
@@ -306,7 +307,7 @@ The misspelling comes from TLFi HTML source code."
 	            for node in children
 		    if first-node?
 		        if (stringp node)
-			    collect (format "%s- " (org-dict-tlfi--item-indentation current-depth t))
+			    collect (format "%s- " (org-dict-tlfi--item-indentation current-depth))
 			else
 			    do (error "TLFi: paraputir's first children is not a string")
 			end
@@ -322,7 +323,7 @@ The misspelling comes from TLFi HTML source code."
 		    collect (cond
 			     ((stringp node) (org-dict-tlfi--parse-string node))
 		             ((org-dict--dom-node-simple-selector-p '(:tag span :attrs ((class . "tlf_cexemple"))) node)
-                              (org-dict-tlfi--parse-cexemple node current-depth))
+                              (concat "\n" (org-dict-tlfi--parse-cexemple node (1+ current-depth)) "\n"))
 			     (t (dom-texts node "")))))))
 
 (defun org-dict-tlfi--parse-string (str)
@@ -335,23 +336,21 @@ The misspelling comes from TLFi HTML source code."
 
   )
 
-(defun org-dict-tlfi--item-indentation (current-depth &optional nested?)
-  (let ((indent-level (+ current-depth
-			 (if nested? 1 0)
-			 (- (1+ org-dict-tlfi-heading-max-depth)))))
-    (make-string
-     (* (if (> indent-level 0) indent-level 0)
-	org-dict-indentation-width)
-     ? )))
+(defun org-dict-tlfi--item-indentation (current-depth)
+  (let* ((indent-level (+ current-depth
+			  (- (1+ org-dict-tlfi-heading-max-depth))))
+	 (indent-width (+ (* (if (> indent-level 0) indent-level 0)
+			     org-dict-indentation-width))))
+    (make-string indent-width ? )))
 
 ;; TODO propertize author, bbg, date
-;; TODO take account of depth
 (defun org-dict-tlfi--parse-cexemple (node current-depth)
+        ;; TODO
   (let* ((content (dom-texts node ""))
 	 (unumbered-content (replace-regexp-in-string "^[0-9]+\\.[ ]*\\(.*\\)" "\\1" content))
 	 (target-content (replace-regexp-in-string "− \\(.*\\)" "\\1" unumbered-content))
-	 (indentation (org-dict-tlfi--item-indentation current-depth t)))
-    (format "\n%s#+BEGIN_QUOTE\n%s%s\n%s#+END_QUOTE\n"
+	 (indentation (org-dict-tlfi--item-indentation current-depth)))
+    (format "%s#+BEGIN_QUOTE\n%s%s\n%s#+END_QUOTE"
 	    indentation
 	    indentation
 	    (propertize target-content 'font-lock-face 'org-dict-example-face)
@@ -401,21 +400,20 @@ ROOT-DEPTH is used to correctly determine the Org heading and numbered list dept
                              do (setq title-settled? t) and
                              collect (org-dict-tlfi--create-section-title title root-depth current-depth numbering-string)
                          end and
-                    	    collect "\n" and
+		         collect "\n" and
                          collect (org-dict-tlfi--parse-parah node root-depth)
                     else
                          if (not title-settled?)
                              do (setq title-settled? t) and
                              collect (org-dict-tlfi--create-section-title title root-depth current-depth numbering-string)
                          end and
-                         collect (org-dict-tlfi--general-parse node nil current-depth)
+                         collect (org-dict-tlfi--general-parse node t current-depth)
                     end
                     if (= total-nodes node-count)
                         if (not title-settled?)
                             do (setq title-settled? t) and
                             collect (org-dict-tlfi--create-section-title title root-depth current-depth numbering-string)
-                    	   end and
-                    	   collect "\n"
+                    	   end
                     end))))
 
 (defun org-dict-tlfi--parse-parsynt (parsynt-node)
@@ -436,11 +434,11 @@ ROOT-DEPTH is used to correctly determine the Org heading and numbered list dept
 	((org-dict--dom-node-simple-selector-p '(:tag span :attrs ((class . "tlf_ccrochet"))) node)
 	 (concat (org-dict-tlfi--parse-ccrochet node) (if inline? " " "\n\n")))
 	((org-dict--dom-node-simple-selector-p '(:tag span :attrs ((class . "tlf_csynonime"))) node)
-	 (org-dict-tlfi--parse-csynonime node))
+	 (concat (org-dict-tlfi--parse-csynonime node) " "))
 	((org-dict--dom-node-simple-selector-p '(:tag span :attrs ((class . "tlf_cdefinition"))) node)
 	 (concat (org-dict-tlfi--parse-cdefinition node) " "))
 	((org-dict--dom-node-simple-selector-p '(:tag div :attrs ((class . "tlf_paraputir"))) node)
-	 (concat "\n\n" (org-dict-tlfi--parse-paraputir node current-depth) "\n"))
+	 (concat "\n" (org-dict-tlfi--parse-paraputir node (1+ current-depth)) "\n"))
 	((org-dict--dom-node-simple-selector-p '(:tag span :attrs ((class . "tlf_csyntagme"))) node)
 	 (concat (org-dict-tlfi--parse-csyntagme node) (if inline? " " "\n")))
 	((org-dict--dom-node-simple-selector-p '(:tag span :attrs ((class . "tlf_cdomaine"))) node)
@@ -448,13 +446,13 @@ ROOT-DEPTH is used to correctly determine the Org heading and numbered list dept
 	((org-dict--dom-node-simple-selector-p '(:tag span :attrs ((class . "tlf_cconstruction"))) node)
 	 (org-dict-tlfi--parse-cconstruction node))
 	((org-dict--dom-node-simple-selector-p '(:tag div :attrs ((class . "tlf_parah"))) node)
-	 (concat "\n" (org-dict-tlfi--parse-parah node)))
+	 (concat "\n" (org-dict-tlfi--parse-parah node) "\n"))
 	((org-dict--dom-node-simple-selector-p '(:tag div :attrs ((class . "tlf_parsynt"))) node)
 	 (org-dict-tlfi--parse-parsynt node))
 	((org-dict--dom-node-simple-selector-p '(:tag div :attrs ((class . "tlf_tabulation"))) node)
 	 (org-dict-tlfi--parse-tabulation node current-depth))
 	((org-dict--dom-node-simple-selector-p '(:tag span :attrs ((class . "tlf_cexemple"))) node)
-	 (org-dict-tlfi--parse-cexemple node current-depth))
+	 (concat "\n" (org-dict-tlfi--parse-cexemple node (1+ current-depth)) "\n"))
 	((org-dict--dom-node-simple-selector-p '(:tag div :attrs ((class . "tlf_cvedette"))) node)
 	 "")
 	((org-dict--dom-node-simple-selector-p '(:tag div :attrs ((class . "tlf_parothers"))) node)
@@ -469,7 +467,7 @@ ROOT-DEPTH is used to correctly determine the Org heading and numbered list dept
 	 (nodes (dom-children article-node))
 	 (total-nodes (length nodes)))
   (let ((result (cl-loop for node in nodes
-		   collect (org-dict-tlfi--general-parse node))))
+		   collect (org-dict-tlfi--general-parse node t 0))))
   (apply #'concat result))))
 
 (defun org-dict-tlfi--parse-entry (dom)
@@ -483,7 +481,6 @@ ROOT-DEPTH is used to correctly determine the Org heading and numbered list dept
       (insert (org-dict-tlfi--parse-entry-content dom))
       (insert "\n")
       ;; TODO parse correctly addendum (etymology etc.)
-      (org-dict--fill-whole-buffer '(quote-block paragraph item))
       (buffer-substring (point-min) (point-max)))))
 
 ;;; Org link
