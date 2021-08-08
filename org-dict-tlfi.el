@@ -163,8 +163,11 @@ CURRENT-DEPTH and NUMBERING"
       ;; Org mode numbered list
       (format "%s%s. %s " (org-dict-tlfi--item-indentation current-depth) numbering title))))
 
-(defun org-dict-tlfi--parse-cemploi (cemploi-node)
-  (propertize (dom-texts cemploi-node "") 'font-lock-face 'org-dict-use-face))
+(defun org-dict-tlfi--parse-cemploi (node)
+  (org-dict-tlfi--punct-fix-up (org-dict-tlfi--parse-text-node node)
+                               ""
+                               'org-dict-use-face
+                               "^\\(\\)\\(.*?\\)\\([[:space:]]*:\\)$"))
 
 (defun org-dict-tlfi--parse-cdefinition (cdefinition-node)
   (propertize (dom-texts cdefinition-node "") 'font-lock-face 'org-dict-definition-face))
@@ -245,37 +248,42 @@ CURRENT-DEPTH and NUMBERING"
 	      (t unknown))
       unknown)))
 
-(defun org-dict-tlfi--parse-text-node (tnode)
+(defun org-dict-tlfi--parse-text-node (tnode &optional children)
   "Parse TLFi's HTML text node (node that is not recursive)."
-  (apply #'concat
-	 (cl-loop with children = (dom-children tnode)
-		  while children
-		  for node = (pop children)
-		  for result = (cond ((stringp node)
-				      (cond ((stringp (car children)) node)
-					    ;; If the next node is a <i> or a <b>
-					    ((org-dict-tlfi--emphasis-p (car children))
-					     ;; Check if the current node contains "v." or "V."
-					     (let ((regex (org-dict-tlfi--potential-link-match node))
-						    result pattern count nodes)
-					       (if regex
-						   ;; If so we have an interlink: we pop out all nodes to the end of the link
-						   (progn
-						     (setq result (org-dict-tlfi--parse-probe-link-end children))
-						     (setq pattern (plist-get result :pattern))
-						     (setq count (plist-get result :count))
-						     ;; and return the Org link
-						     (if (eq pattern 'unknown)
-							 node
-						       (setq nodes (cl-subseq children 0 count))
-						       (setq children (cl-subseq children count))
-						       (org-dict-tlfi--make-link node nodes regex pattern)))
-						 node)))
-					    ((org-dict-tlfi--sup-p (car children))
-					     (format "%s^{%s} " node (dom-texts (pop children) "")))
-					    (t node)))
-				     (t (dom-texts node "")))
-		  collect result)))
+  (cl-loop with children = (or children (dom-children tnode))
+	   while children
+	   for node = (pop children)
+           ;; when (eq (car node) 'b)
+           ;;   do (message "%S %S" node (car children))
+	   for result = (cond ((stringp node)
+			       (cond ((stringp (car children)) node)
+				     ;; If the next node is a <i> or a <b>
+				     ((org-dict-tlfi--emphasis-p (car children))
+				      ;; Check if the current node contains "v." or "V."
+				      (let ((regex (org-dict-tlfi--potential-link-match node))
+					    result pattern count nodes)
+					(if regex
+					    ;; If so we have an interlink: we pop out all nodes to the end of the link
+					    (progn
+					      (setq result (org-dict-tlfi--parse-probe-link-end children))
+					      (setq pattern (plist-get result :pattern))
+					      (setq count (plist-get result :count))
+					      ;; and return the Org link
+					      (if (eq pattern 'unknown)
+						  node
+						(setq nodes (cl-subseq children 0 count))
+						(setq children (cl-subseq children count))
+						(org-dict-tlfi--make-link node nodes regex pattern)))
+					  node)))
+				     ((org-dict-tlfi--sup-p (car children))
+				      (format "%s^{%s} " node (dom-texts (pop children) "")))
+				     (t node)))
+			      ((eq (car node) 'i)
+                               (org-dict-tlfi--punct-fix-up (nth 2 node) "/"))
+			      ((eq (car node) 'b)
+                               (org-dict-tlfi--punct-fix-up (nth 2 node) "*"))
+			      (t (dom-texts node "")))
+	   concat result))
 
 (defun org-dict-tlfi--parse-ccrochet (node)
   (let ((text (org-dict-tlfi--parse-text-node node)))
@@ -331,10 +339,22 @@ The misspelling comes from TLFi HTML source code."
   (if (string= " " str) ""
     (replace-regexp-in-string "[[:space:]\n]+" " " str)))
 
-;; TODO
-(defun org-dict-tlfi--parse-cothers (node)
+(defun org-dict-tlfi--parse-parothers (node)
+  (dom-texts node ""))
 
-  )
+(defun org-dict-tlfi--parse-title (node)
+  (org-dict-tlfi--punct-fix-up (org-dict-tlfi--parse-text-node node)
+                               "" 'org-dict-example-source-face))
+
+(defun org-dict-tlfi--parse-date (node)
+  (propertize (dom-texts node "") 'font-lock-face 'org-dict-example-face))
+
+(defun org-dict-tlfi--parse-author (node &optional indentation)
+  (format "\n\n%s-- %s"
+          indentation
+          (propertize
+           (org-dict-tlfi--punct-fix-up (org-dict-tlfi--parse-text-node node) "*")
+           'font-lock-face 'org-dict-example-face)))
 
 (defun org-dict-tlfi--item-indentation (current-depth)
   (let* ((indent-level (+ current-depth
@@ -343,18 +363,79 @@ The misspelling comes from TLFi HTML source code."
 			     org-dict-indentation-width))))
     (make-string indent-width ? )))
 
+(defun org-dict-tlfi--punct-fix-up (str &optional markup face regexp)
+  (let ((success-match
+         (string-match
+          (if regexp regexp "^\\([[:punct:][:space:]]*\\)\\(.*?\\)\\([[:punct:][:space:]]*\\)$")
+          str)))
+    (if (and success-match
+             (match-string 2 str))
+        (format "%s%s%s%s%s"
+                (or (match-string 1 str) "")
+                (or markup (concat "\u200b" markup))
+                (if face
+                    (propertize (match-string 2 str) 'font-lock-face face)
+                  (match-string 2 str))
+                (or markup (concat markup "\u200b"))
+                (or (match-string 3 str) ""))
+      (if face (propertize str 'font-lock-face face) str))))
+
+(defun org-dict-tlfi--succesive-p (seq)
+  (cl-loop while seq
+	   for n = (pop seq)
+           when (and (car seq)
+                     (not (eq (1+ n) (car seq))))
+             return nil
+           finally return t))
+
+(defun org-dict-tlfi--parse-cexemple-source-pos (node)
+  (let ((positions (cl-loop with children = (dom-children node)
+                            with index = 0
+                            for child in children
+                            if (or (org-dict--dom-node-simple-selector-p '(:tag span :attrs ((class . "tlf_cauteur"))) child)
+                                   (org-dict--dom-node-simple-selector-p '(:tag span :attrs ((class . "tlf_cpublication"))) child)
+                                   (org-dict--dom-node-simple-selector-p '(:tag span :attrs ((class . "tlf_ctitre"))) child)
+                                   (org-dict--dom-node-simple-selector-p '(:tag span :attrs ((class . "tlf_cdate"))) child))
+                              collect index
+                            do (setq index (1+ index)))))
+    (prog1 positions
+      (unless (and positions
+                   (org-dict-tlfi--succesive-p positions))
+        (error "TLFi: positions %S of the source in cexemple are wrong: %S" positions node)))))
+
 ;; TODO propertize author, bbg, date
 (defun org-dict-tlfi--parse-cexemple (node current-depth)
-        ;; TODO
-  (let* ((content (dom-texts node ""))
-	 (unumbered-content (replace-regexp-in-string "^[0-9]+\\.[ ]*\\(.*\\)" "\\1" content))
-	 (target-content (replace-regexp-in-string "− \\(.*\\)" "\\1" unumbered-content))
-	 (indentation (org-dict-tlfi--item-indentation current-depth)))
-    (format "%s#+BEGIN_QUOTE\n%s%s\n%s#+END_QUOTE"
-	    indentation
-	    indentation
-	    (propertize target-content 'font-lock-face 'org-dict-example-face)
-	    indentation)))
+  (let* ((indentation (org-dict-tlfi--item-indentation current-depth))
+         (source-positions (org-dict-tlfi--parse-cexemple-source-pos node))
+         (children (dom-children node))
+         (pre-source-children (cl-subseq children 0 (1- (nth 0 source-positions))))
+         (post-source-children (cl-subseq children
+                                          (1+ (nth (1- (length source-positions)) source-positions))
+                                          (length children)))
+         (pre-source-string (propertize
+                             (org-dict-tlfi--parse-text-node nil pre-source-children)
+                             'font-lock-face 'org-dict-example-face))
+         (post-source-string
+          (propertize
+           (org-dict-tlfi--parse-text-node nil post-source-children)
+           'font-lock-face 'org-dict-example-face))
+         (author-node (car (org-dict--dom-select node '((:tag span :attrs ((class . "tlf_cauteur")))))))
+         (title-node (car (org-dict--dom-select node '((:tag span :attrs ((class . "tlf_ctitre")))))))
+         (publication-node (car (org-dict--dom-select node '((:tag span :attrs ((class . "tlf_cpublication")))))))
+         (date-node (car (org-dict--dom-select node '((:tag span :attrs ((class . "tlf_cdate")))))))
+         (new-author-node (org-dict-tlfi--parse-author author-node indentation))
+         (new-publication-node (org-dict-tlfi--parse-author publication-node indentation))
+         (new-title-node (org-dict-tlfi--parse-title title-node))
+         (new-date-node (org-dict-tlfi--parse-date date-node))
+         (content (concat pre-source-string new-author-node new-title-node new-date-node post-source-string))
+         ;; TODO add target link for numbered examples & hide them
+         (unumbered-content (replace-regexp-in-string "^[0-9]+\\.[ ]*\\(.*\\)" "\\1" content))
+	 (target-content (replace-regexp-in-string "− \\(.*\\)" "\\1" unumbered-content)))
+      (format "%s#+BEGIN_QUOTE\n%s%s\n%s#+END_QUOTE"
+	      indentation
+	      indentation
+	      target-content
+	      indentation)))
 
 ;; Source of sigles http://www.languefrancaise.net/forum/viewtopic.php?id=11703
 (defun org-dict-tlfi--parse-parah (parah-node &optional root-depth)
@@ -456,8 +537,8 @@ ROOT-DEPTH is used to correctly determine the Org heading and numbered list dept
 	((org-dict--dom-node-simple-selector-p '(:tag div :attrs ((class . "tlf_cvedette"))) node)
 	 "")
 	((org-dict--dom-node-simple-selector-p '(:tag div :attrs ((class . "tlf_parothers"))) node)
-	 (concat (dom-texts node "") (if inline? "" "\n")))
-	(t (concat (dom-texts node "") (if inline? "" "\n")))))
+	 (concat (org-dict-tlfi--parse-parothers node) (if inline? "" "\n")))
+	(t (concat (org-dict-tlfi--parse-text-node node) (if inline? "" "\n")))))
 
 (defun org-dict-tlfi--parse-entry-content (dom)
   "Parse a single TLFi entry of DOM."
@@ -467,7 +548,7 @@ ROOT-DEPTH is used to correctly determine the Org heading and numbered list dept
 	 (nodes (dom-children article-node))
 	 (total-nodes (length nodes)))
   (let ((result (cl-loop for node in nodes
-		   collect (org-dict-tlfi--general-parse node t 0))))
+		   collect (org-dict-tlfi--general-parse node nil 0))))
   (apply #'concat result))))
 
 (defun org-dict-tlfi--parse-entry (dom)

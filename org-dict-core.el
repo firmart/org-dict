@@ -68,8 +68,14 @@
   :package-version '(org-dict . "0.1"))
 
 (defface org-dict-example-face
-  '((t (:inherit font-lock-comment-face :foreground "aquamarine")))
+  '((t (:inherit font-lock-string-face :foreground "aquamarine")))
   "Face for examples of the definition."
+  :group 'org-dict
+  :package-version '(org-dict . "0.1"))
+
+(defface org-dict-example-source-face
+  '((t (:inherit org-dict-example-face :underline t)))
+  "Face for example's sources of the definition."
   :group 'org-dict
   :package-version '(org-dict . "0.1"))
 
@@ -177,8 +183,8 @@ Required Emacs >= 28 due to the use of `object-intervals'."
   "Replace NODE in DOM with the NEW-NODE.
 
 Before using this function, make sure that:
-- NODE is not the root node (dom-parent would fail);
-- NODE is not a string node (dom-parent limitation)."
+- NODE is not the root node (`dom-parent' would fail);
+- NODE is not a string node (`dom-parent' limitation)."
 
   (let ((parent (dom-parent dom node)))
     (dom-add-child-before parent new-node node)
@@ -209,22 +215,22 @@ DOM is an HTML DOM."
 
 (defun org-dict--dom-node-simple-selector-p (simple-selector node)
   "Return t whenever NODE match a SIMPLE-SELECTOR query."
-  (or (not simple-selector)
-      (and (let ((tag (plist-get simple-selector :tag)))
-	     (or (not tag) (eq tag (car node))))
-	   (cl-loop for (key . value) in (plist-get simple-selector :attrs)
-		    with match-result
-		    if (not key)
-		      do (error "Attribute selector must have a key")
-		    else if (not value)
-		      do (setq match-result (member key (mapcar #'car (dom-attributes node))))
-		    else if (eq key 'class)
-	              do (setq match-result (org-dict--dom-node-class-p (split-string value) node))
-		    else
-		      do (setq match-result (member (cons key value) (dom-attributes node)))
-
-		    if (not match-result) return nil
-		    finally return t))))
+  (and (not (stringp node))
+       (or (not simple-selector) ;; nil corresponds to the universal selector
+	   (and (let ((tag (plist-get simple-selector :tag)))
+		  (or (not tag) (eq tag (car node))))
+		(cl-loop for (key . value) in (plist-get simple-selector :attrs)
+			 with match-result
+			 if (not key)
+			   do (error "Attribute selector must have a key")
+			 else if (not value)
+			   do (setq match-result (member key (mapcar #'car (dom-attributes node))))
+			 else if (eq key 'class)
+			   do (setq match-result (org-dict--dom-node-class-p (split-string value) node))
+			 else
+			   do (setq match-result (member (cons key value) (dom-attributes node)))
+			 if (not match-result) return nil
+			 finally return t)))))
 
 (defun org-dict--dom-by-attrs (dom attrs)
   "Return nodes from DOM that match attributes ATTRS.
