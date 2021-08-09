@@ -165,7 +165,7 @@ CURRENT-DEPTH and NUMBERING"
 
 (defun org-dict-tlfi--parse-cemploi (node)
   (org-dict-tlfi--punct-fix-up (org-dict-tlfi--parse-text-node node)
-                               ""
+                               nil
                                'org-dict-use-face
                                "^\\(\\)\\(.*?\\)\\([[:space:]]*:\\)$"))
 
@@ -343,18 +343,16 @@ The misspelling comes from TLFi HTML source code."
   (dom-texts node ""))
 
 (defun org-dict-tlfi--parse-title (node)
-  (org-dict-tlfi--punct-fix-up (org-dict-tlfi--parse-text-node node)
-                               "" 'org-dict-example-source-face))
+  (org-dict-tlfi--punct-fix-up (dom-texts node "")
+                               "/" 'org-dict-example-source-face))
 
 (defun org-dict-tlfi--parse-date (node)
   (propertize (dom-texts node "") 'font-lock-face 'org-dict-example-face))
 
-(defun org-dict-tlfi--parse-author (node &optional indentation)
-  (format "\n\n%s-- %s"
-          indentation
-          (propertize
-           (org-dict-tlfi--punct-fix-up (org-dict-tlfi--parse-text-node node) "*")
-           'font-lock-face 'org-dict-example-face)))
+(defun org-dict-tlfi--parse-author (node)
+  (propertize
+   (org-dict-tlfi--punct-fix-up (org-dict-tlfi--parse-text-node node) "*")
+   'font-lock-face 'org-dict-example-face))
 
 (defun org-dict-tlfi--item-indentation (current-depth)
   (let* ((indent-level (+ current-depth
@@ -370,13 +368,12 @@ The misspelling comes from TLFi HTML source code."
           str)))
     (if (and success-match
              (match-string 2 str))
-        (format "%s%s%s%s%s"
-                (or (match-string 1 str) "")
-                (or markup (concat "\u200b" markup))
+        (concat (or (match-string 1 str) "")
+                (unless (string-empty-p markup) (concat "\u200b" markup))
                 (if face
                     (propertize (match-string 2 str) 'font-lock-face face)
                   (match-string 2 str))
-                (or markup (concat markup "\u200b"))
+                (unless (string-empty-p markup) (concat markup "\u200b"))
                 (or (match-string 3 str) ""))
       (if face (propertize str 'font-lock-face face) str))))
 
@@ -399,8 +396,7 @@ The misspelling comes from TLFi HTML source code."
                               collect index
                             do (setq index (1+ index)))))
     (prog1 positions
-      (unless (and positions
-                   (org-dict-tlfi--succesive-p positions))
+      (unless positions
         (error "TLFi: positions %S of the source in cexemple are wrong: %S" positions node)))))
 
 ;; TODO propertize author, bbg, date
@@ -408,7 +404,7 @@ The misspelling comes from TLFi HTML source code."
   (let* ((indentation (org-dict-tlfi--item-indentation current-depth))
          (source-positions (org-dict-tlfi--parse-cexemple-source-pos node))
          (children (dom-children node))
-         (pre-source-children (cl-subseq children 0 (1- (nth 0 source-positions))))
+         (pre-source-children (cl-subseq children 0 (nth 0 source-positions)))
          (post-source-children (cl-subseq children
                                           (1+ (nth (1- (length source-positions)) source-positions))
                                           (length children)))
@@ -423,11 +419,13 @@ The misspelling comes from TLFi HTML source code."
          (title-node (car (org-dict--dom-select node '((:tag span :attrs ((class . "tlf_ctitre")))))))
          (publication-node (car (org-dict--dom-select node '((:tag span :attrs ((class . "tlf_cpublication")))))))
          (date-node (car (org-dict--dom-select node '((:tag span :attrs ((class . "tlf_cdate")))))))
-         (new-author-node (org-dict-tlfi--parse-author author-node indentation))
-         (new-publication-node (org-dict-tlfi--parse-author publication-node indentation))
-         (new-title-node (org-dict-tlfi--parse-title title-node))
-         (new-date-node (org-dict-tlfi--parse-date date-node))
-         (content (concat pre-source-string new-author-node new-title-node new-date-node post-source-string))
+         (new-author-node (when author-node (org-dict-tlfi--parse-author author-node)))
+         (new-publication-node (when publication-node (org-dict-tlfi--parse-title publication-node)))
+         (new-title-node (when title-node (org-dict-tlfi--parse-title title-node)))
+         (new-date-node (when date-node (org-dict-tlfi--parse-date date-node)))
+         (content (concat pre-source-string
+                          (format "\n\n%s-- " indentation)
+                          new-author-node new-publication-node new-title-node new-date-node post-source-string))
          ;; TODO add target link for numbered examples & hide them
          (unumbered-content (replace-regexp-in-string "^[0-9]+\\.[ ]*\\(.*\\)" "\\1" content))
 	 (target-content (replace-regexp-in-string "− \\(.*\\)" "\\1" unumbered-content)))

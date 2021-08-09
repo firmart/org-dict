@@ -69,6 +69,8 @@
 - [ ] Navigation facilities
 - [ ] Candidates function: if there is no entry and the dictionary provides some
   candidates, display them through the =candidate-f=.
+- [ ] Concise function: function that ignore examples and more so that the
+  output of the dictionary can be reused elsewhere.
 - [X] URL/Services list (multiple dictionaries)
 - [X] Go to online dictionary URL (=completing-read= for multiple dictionaries)
 
