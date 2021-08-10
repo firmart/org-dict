@@ -169,8 +169,11 @@ CURRENT-DEPTH and NUMBERING"
                                'org-dict-use-face
                                "^\\(\\)\\(.*?\\)\\([[:space:]]*:\\)$"))
 
-(defun org-dict-tlfi--parse-cdefinition (cdefinition-node)
-  (propertize (dom-texts cdefinition-node "") 'font-lock-face 'org-dict-definition-face))
+(defun org-dict-tlfi--parse-cdefinition (node)
+  (org-dict-tlfi--punct-fix-up (org-dict-tlfi--parse-text-node node)
+                               nil
+                               'org-dict-definition-face
+                               "^\\(\\)\\(.*?\\)\\([[:space:]]*:\\)$"))
 
 (defun org-dict-tlfi--emphasis-p (node)
   (let ((tag (car node)))
@@ -397,7 +400,7 @@ The misspelling comes from TLFi HTML source code."
                             do (setq index (1+ index)))))
     (prog1 positions
       (unless positions
-        (error "TLFi: positions %S of the source in cexemple are wrong: %S" positions node)))))
+        (error "TLFi: positions of the source in tlf_cexemple is nil : %S" node)))))
 
 ;; TODO propertize author, bbg, date
 (defun org-dict-tlfi--parse-cexemple (node current-depth)
